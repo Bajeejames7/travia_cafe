@@ -11,9 +11,16 @@
   --danger: #f87171;
   --info: #60a5fa;
   --radius: 14px;
-  --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --term: 'VT323', 'JetBrains Mono', ui-monospace, monospace;
+  --glow: 0 0 6px rgba(54, 211, 153, .55), 0 0 18px rgba(54, 211, 153, .25);
   color-scheme: dark;
 }
+
+/* Self-hosted so the CSP (font-src 'self') allows them. Both fonts are SIL OFL. */
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-latin-700-normal.woff2') format('woff2'); font-weight: 600 800; font-display: swap; }
+@font-face { font-family: 'VT323'; src: url('/fonts/vt323-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -21,11 +28,15 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font: 15px/1.65 var(--mono);
 }
 a { color: var(--accent); }
 h1, h2, h3 { line-height: 1.2; margin: 0 0 .5em; }
-h2 { font-size: 1.6rem; }
+h1, h2 { font-family: var(--term); font-weight: 400; letter-spacing: .02em; color: #eafff5; text-shadow: var(--glow); }
+h2 { font-size: 2.3rem; }
+h2::before { content: '> '; color: var(--accent); }
+h3 { font-weight: 700; letter-spacing: -.01em; }
+::selection { background: var(--accent); color: var(--accent-ink); }
 p { margin: 0 0 1em; }
 code, .mono { font-family: var(--mono); }
 [hidden] { display: none !important; }
@@ -59,7 +70,8 @@ section.wrap { padding-top: 56px; padding-bottom: 8px; scroll-margin-top: 64px; 
 
 /* Hero */
 .hero { padding-top: 72px; padding-bottom: 24px; }
-.hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); max-width: 16ch; }
+.hero h1 { font-size: clamp(2.8rem, 7vw, 4.6rem); line-height: 1; max-width: 18ch; min-height: 2em; }
+.dash-hero h1 { min-height: 0; }
 .eyebrow { font-family: var(--mono); color: var(--accent); font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
 .lead { font-size: 1.15rem; color: var(--muted); max-width: 60ch; }
 
@@ -70,11 +82,14 @@ section.wrap { padding-top: 56px; padding-bottom: 8px; scroll-margin-top: 64px; 
   background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 650;
   text-decoration: none; cursor: pointer; white-space: nowrap;
 }
-.btn:hover { filter: brightness(1.08); }
+.btn { transition: box-shadow .2s, border-color .2s, filter .2s, transform .1s; }
+.btn:hover { filter: brightness(1.08); box-shadow: var(--glow); }
+.btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .55; cursor: progress; }
 .btn.ghost { background: transparent; color: var(--text); border-color: var(--line); }
-.btn.ghost:hover { border-color: var(--muted); }
+.btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
 .btn.danger { background: transparent; color: var(--danger); border-color: rgba(248, 113, 113, .45); }
+@media (max-width: 480px) { form .btn { white-space: normal; text-align: center; } }
 .btn.small { padding: 6px 12px; font-size: .875rem; border-radius: 8px; }
 
 label { display: block; font-size: .875rem; color: var(--muted); margin-bottom: 14px; }
@@ -90,8 +105,10 @@ textarea { min-height: 110px; resize: vertical; }
 /* Cards & panels */
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
 .card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
-.card h3 { font-size: 1.2rem; }
-.card .price { font-size: 1.8rem; font-weight: 750; margin: 14px 0 2px; }
+.card { transition: border-color .25s, box-shadow .25s, transform .25s; }
+.card:hover { border-color: rgba(54, 211, 153, .55); box-shadow: 0 0 0 1px rgba(54, 211, 153, .15), 0 10px 40px -12px rgba(54, 211, 153, .35); transform: translateY(-3px); }
+.card h3 { font-size: 1.1rem; }
+.card .price { font-family: var(--term); font-size: 2.4rem; font-weight: 400; color: var(--accent); text-shadow: var(--glow); margin: 14px 0 2px; }
 .card .price small { font-size: .9rem; color: var(--muted); font-weight: 400; }
 .card ul { padding-left: 1.1em; margin: 14px 0 18px; color: var(--muted); }
 .card ul li { margin-bottom: 4px; }
@@ -119,7 +136,7 @@ textarea { min-height: 110px; resize: vertical; }
 @media (max-width: 640px) { .seg { grid-template-columns: 1fr; } }
 
 /* Tables */
-.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 table { width: 100%; border-collapse: collapse; font-size: .95rem; }
 th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; background: var(--bg-2); }
@@ -176,7 +193,7 @@ pre.mail { white-space: pre-wrap; font-family: var(--mono); font-size: .85rem; b
 /* Student auth & dashboard */
 .auth-card { max-width: 440px; margin: 56px auto; }
 .auth-card .tabs { margin-top: 0; }
-.auth-card h2 { font-size: 1.3rem; }
+.auth-card h2 { font-size: 1.9rem; }
 .btn.wide { width: 100%; }
 .btn.google { width: 100%; background: #fff; color: #1f1f1f; border-color: #dadce0; margin-bottom: 4px; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .85rem; margin: 16px 0; }
@@ -194,7 +211,7 @@ pre.mail { white-space: pre-wrap; font-family: var(--mono); font-size: .85rem; b
 
 /* Phones: tables become stacked cards. Each cell is labelled with its column name (set by common.js). */
 @media (max-width: 720px) {
-  .table-wrap { border: 0; overflow: visible; }
+  .table-wrap { border: 0; overflow: visible; background: none; }
   .table-wrap table, .table-wrap tbody, .table-wrap tr, .table-wrap td { display: block; width: 100%; }
   .table-wrap thead { display: none; }
   .table-wrap tr { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 0; margin-bottom: 12px; }
@@ -207,4 +224,57 @@ pre.mail { white-space: pre-wrap; font-family: var(--mono); font-size: .85rem; b
   .table-wrap td[colspan] { text-align: center; }
   .table-wrap td input:not([type=checkbox]), .table-wrap td select, .table-wrap td textarea { width: 100% !important; }
   .table-wrap .actions .btn { flex: 1; min-height: 40px; }
+}
+
+/* ---------- Hacker effects (driven by fx.js; all off for reduced motion) ---------- */
+
+/* Matrix rain sits behind everything; the body background shows through it. */
+#matrix { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; opacity: .14; }
+
+/* CRT scanlines + vignette */
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 100;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, .025) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, .35));
+}
+
+/* Blinking terminal cursor */
+.cursor::after {
+  content: ''; display: inline-block; width: .5em; height: .8em; margin-left: .12em; vertical-align: -.05em;
+  background: var(--accent); box-shadow: var(--glow); animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Logo: glitch on hover */
+.logo { position: relative; box-shadow: var(--glow); }
+.brand:hover .logo { animation: glitch .35s steps(2) 2; }
+@keyframes glitch {
+  0% { transform: translate(0); text-shadow: -2px 0 #ff2a6d, 2px 0 #05d9e8; }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(2px, -1px); text-shadow: 2px 0 #ff2a6d, -2px 0 #05d9e8; }
+  75% { transform: translate(-1px, -1px); }
+  100% { transform: translate(0); text-shadow: none; }
+}
+
+/* Occasional RGB-split flicker on the hero heading */
+.hero h1.glitching { animation: glitch .3s steps(2) 1; }
+
+/* Scroll reveal: only hides things once fx.js has confirmed it is running */
+.fx .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+.fx .reveal.in { opacity: 1; transform: none; }
+
+/* One-time boot screen on the home page */
+#boot {
+  position: fixed; inset: 0; z-index: 200; background: #05080b; color: var(--accent);
+  font: 15px/1.6 var(--mono); padding: 24px 16px; overflow: hidden; cursor: pointer;
+  transition: opacity .4s ease;
+}
+#boot.done { opacity: 0; pointer-events: none; }
+#boot pre { margin: 0; white-space: pre-wrap; text-shadow: var(--glow); max-width: 760px; }
+#boot .skip { position: absolute; right: 16px; bottom: 16px; color: var(--muted); font-size: .8rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  #matrix, #boot { display: none; }
 }
