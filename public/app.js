@@ -66,12 +66,38 @@ function renderAuth() {
   updateForm();
 }
 
+/** Where to come back to after signing up, with the student's choices kept in the URL. */
+function loginUrl(mode) {
+  const back = new URLSearchParams({ track: track(), module: enrollForm.module_id.value, class: enrollForm.class_id.value || '' });
+  return `/login?${mode === 'signup' ? 'mode=signup&' : ''}next=${encodeURIComponent(`/?${back}#enroll`)}`;
+}
+
+/** Restores choices carried through sign-up (see loginUrl). */
+function applySavedChoice() {
+  const p = new URLSearchParams(location.search);
+  if (!p.has('track')) return;
+  const radio = enrollForm.querySelector(`input[name=track][value="${CSS.escape(p.get('track'))}"]`);
+  if (radio) radio.checked = true;
+  if (catalog.modules.some((m) => String(m.id) === p.get('module'))) enrollForm.module_id.value = p.get('module');
+  updateForm();
+  const opt = [...enrollForm.class_id.options].find((o) => o.value === p.get('class') && !o.disabled);
+  if (opt) enrollForm.class_id.value = opt.value;
+  syncGateLinks();
+  history.replaceState(null, '', '/#enroll');
+}
+
+function syncGateLinks() {
+  $('#gateSignup').href = loginUrl('signup');
+  $('#gateLogin').href = loginUrl('login');
+}
+
 function updateForm() {
   if (!catalog) return;
   const t = track();
   const mod = selectedModule();
   $('#classField').hidden = t === 'self';
   if (t !== 'self' && mod) {
+    const keep = enrollForm.class_id.value;
     const options = catalog.classes.filter((c) => c.module_id === mod.id && c.mode === t);
     enrollForm.class_id.innerHTML =
       options
@@ -80,10 +106,13 @@ function updateForm() {
           return `<option value="${c.id}" ${c.full ? 'disabled' : ''}>${esc(fmtWhen(c.starts_at))} — ${esc(c.title)}${where}${c.full ? ' (full)' : ''}</option>`;
         })
         .join('') + `<option value="">Next available date — we'll email you</option>`;
+    // Keep the current choice if it is still offered; otherwise default to the first open class.
+    const kept = options.find((c) => String(c.id) === keep && !c.full);
     const firstOpen = options.find((c) => !c.full);
-    enrollForm.class_id.value = firstOpen ? firstOpen.id : '';
+    enrollForm.class_id.value = kept ? kept.id : firstOpen ? firstOpen.id : '';
   }
   const price = mod ? ksh(priceFor(mod, t)) : '—';
+  syncGateLinks();
   enrollForm.querySelector('[type=submit]').innerHTML = me
     ? `Continue to payment — KSh ${price}`
     : `Create account to enrol — KSh ${price}`;
@@ -91,6 +120,7 @@ function updateForm() {
 
 enrollForm.addEventListener('change', (e) => {
   if (e.target.name === 'track' || e.target.name === 'module_id') updateForm();
+  else if (catalog) syncGateLinks();
 });
 
 document.querySelectorAll('[data-pick]').forEach((a) =>
@@ -102,14 +132,14 @@ document.querySelectorAll('[data-pick]').forEach((a) =>
 
 enrollForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!me) return location.assign('/login?mode=signup&next=/%23enroll');
+  if (!me) return location.assign(loginUrl('signup'));
   const msg = $('#enrollMsg');
   notice(msg);
   try {
     await withBusy(enrollForm.querySelector('button[type=submit]'), () => api('/api/enroll', { method: 'POST', body: formData(enrollForm) }));
     location.assign('/account#payments');
   } catch (err) {
-    if (err.status === 401) return location.assign('/login?next=/%23enroll');
+    if (err.status === 401) return location.assign(loginUrl('login'));
     notice(msg, 'err', esc(err.message));
   }
 });
@@ -127,5 +157,6 @@ api('/api/public/catalog')
   .then((c) => {
     catalog = c;
     renderCatalog();
+    applySavedChoice();
   })
   .catch(() => notice($('#enrollMsg'), 'err', 'Could not load classes. Please refresh the page.'));
