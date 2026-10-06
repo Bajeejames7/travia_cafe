@@ -1230,6 +1230,8 @@ app.get(STAFF_PATH, (req, res) => {
 });
 app.get(`${STAFF_PATH}/staff.js`, (req, res) => res.sendFile(path.join(__dirname, 'private', 'staff.js')));
 app.get('/learn', (req, res) => res.redirect(301, '/account'));
+// Browsers ask for /favicon.ico on their own; serve our SVG so a stale icon from another app is replaced.
+app.get('/favicon.ico', (req, res) => res.type('image/svg+xml').sendFile(path.join(__dirname, 'public', 'favicon.svg')));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
