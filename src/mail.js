@@ -33,13 +33,9 @@ async function sendMail({ to, subject, text }) {
   } else {
     console.log(`[mail] SMTP not configured — logged only\nTo: ${to}\nSubject: ${subject}\n\n${text}\n`);
   }
-  db.prepare('INSERT INTO outbox (to_email, subject, body, status, error) VALUES (?, ?, ?, ?, ?)').run(
-    to,
-    subject,
-    text,
-    status,
-    error
-  );
+  await db
+    .run('INSERT INTO outbox (to_email, subject, body, status, error) VALUES (?, ?, ?, ?, ?)', to, subject, text, status, error)
+    .catch((err) => console.error(`[mail] could not record outbox entry: ${err.message}`));
   return status;
 }
 

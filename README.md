@@ -53,18 +53,29 @@ removed, so nobody can claim another person's email in advance.
 - **Teacher**: schedules classes, adds meeting links, emails links and messages to paid students, and checks students in.
   Teachers cannot see payments, prices or videos.
 
-## Running it locally
+## Running a local preview
 
-Requires Node.js 22.13 or newer. It uses Node's built-in SQLite, so there is no database server to install.
+Requires **Node.js 22.13 or newer** (`node -v`). Without `DATABASE_URL` the app uses a local SQLite file, so there
+is no database to install.
 
 ```bash
+git clone https://github.com/Bajeejames7/travia_cafe.git
+cd travia_cafe
 npm install
-cp .env.example .env   # then edit it
+# put the .env file you were given in this folder (or copy .env.example to .env and fill it in)
+npm run seed     # loads demo modules, videos, classes, a teacher and students
 npm start
 ```
 
-The console prints the store address and the staff dashboard address. If `ADMIN_PASSWORD` is not set, a random password is
-printed once on first start.
+`npm run seed` prints the logins and the staff dashboard address. It only runs on an empty database; to start over,
+stop the server and delete the `data` folder.
+
+The demo contains students in every state, so you can try each flow:
+
+- **Amina** (the demo student login): videos unlocked, a paid live class with a Join button, one module still to pay for.
+- **Brian**: paid and waiting for an admin to confirm (Payments → To review).
+- **Cynthia**: confirmed for the in-person lab; the seed prints her ticket code to try teacher Check-in.
+- **David**: registered but not paid.
 
 ## Email
 
@@ -72,17 +83,26 @@ Set the `SMTP_*` variables (Gmail with an App Password, Zoho, Brevo, etc.). Unti
 email, including codes, is saved in the **Emails** tab, and the code is shown on screen when you confirm a payment, so you can
 send it by SMS or WhatsApp.
 
-## Deploying
+## Deploying (Render + Aiven PostgreSQL)
 
-This app needs a server with a **persistent disk**, because the database and videos live in `DATA_DIR`. GitHub Pages and
-Netlify will not work. Options:
+1. **Aiven:** create a PostgreSQL service. From its overview page copy the **Service URI** and download the
+   **CA certificate** (`ca.pem`).
+2. **Render:** New → Blueprint → choose this repo. `render.yaml` sets up the web service, a persistent disk for videos
+   and the environment variables. When asked, fill in:
+   - `DATABASE_URL`: the Aiven Service URI.
+   - `DATABASE_CA_CERT`: the full contents of `ca.pem`.
+   - `PUBLIC_URL`: your site address, e.g. `https://travia-cafe.onrender.com`.
+   - `ADMIN_EMAIL` / `ADMIN_PASSWORD`: the first admin login (use a new, strong password, not the demo one).
+   - SMTP and Google settings when you have them.
+3. Deploy. Tables are created automatically on first start. Open `<PUBLIC_URL>/<STAFF_PATH>` to log in; Render
+   generates a random `STAFF_PATH`, which you can read under the service's Environment tab.
+4. If you use Google sign-in, add `<PUBLIC_URL>/auth/google/callback` to the OAuth client's redirect URIs.
 
-- **A small VPS** (e.g. a KSh ~700/month droplet) with Nginx in front, `TRUST_PROXY=1`, and a process manager like `pm2`.
-- **Render / Railway** with a persistent disk mounted at `DATA_DIR`.
+**Videos need the persistent disk.** Render's normal filesystem is wiped on every deploy and restart, so uploaded videos
+are stored on the disk mounted at `DATA_DIR`. A disk requires a paid instance (Starter or above); the free plan
+would lose every uploaded video. Everything else (accounts, payments, classes) lives in Aiven.
 
-Always serve it over HTTPS in production (`NODE_ENV=production` marks cookies `Secure`).
-
-Back up `DATA_DIR/travia.db` regularly. That file contains all registrations and payments.
+Do not run `npm run seed` against production; it refuses when `NODE_ENV=production`.
 
 ## Security notes
 

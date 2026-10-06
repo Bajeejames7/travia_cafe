@@ -11,7 +11,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const { db, VIDEO_DIR, tx, getSettings, setSettings } = require('./src/db');
+const { db, init, VIDEO_DIR, getSettings, setSettings } = require('./src/db');
+const { ensureAdmin } = require('./src/admin');
 const { sendMail, mailConfigured } = require('./src/mail');
 const emails = require('./src/emails');
 const {
@@ -39,19 +40,6 @@ const TRACKS = ['self', 'live', 'physical'];
 const PRICE_COL = { self: 'price_self', live: 'price_live', physical: 'price_physical' };
 
 // ---------------------------------------------------------------------------
-// Bootstrap the first admin account
-// ---------------------------------------------------------------------------
-if (!db.prepare("SELECT 1 FROM staff WHERE role = 'admin'").get()) {
-  const email = process.env.ADMIN_EMAIL || 'admin@example.com';
-  const password = process.env.ADMIN_PASSWORD || randomChars(14);
-  db.prepare("INSERT INTO staff (name, email, pass_hash, role) VALUES ('Admin', ?, ?, 'admin')").run(email, hashPassword(password));
-  console.log('\n=== First admin account created ===');
-  console.log(`Email:    ${email}`);
-  console.log(`Password: ${process.env.ADMIN_PASSWORD ? '(from ADMIN_PASSWORD)' : password}`);
-  console.log('Change it after logging in.\n');
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 class HttpError extends Error {
@@ -73,7 +61,7 @@ function int(v, { min = 0, max = 10_000_000, label = 'Number' } = {}) {
   return n;
 }
 function optionalId(v) {
-  return v === undefined || v === null || v === '' ? null : int(v, { min: 1, label: 'ID' });
+  return v === undefined || v === null || v === '' ? null : int(v, { min: 1, max: 2_000_000_000, label: 'ID' });
 }
 function email(v) {
   const s = text(v, 200, { required: true, label: 'Email' }).toLowerCase();
@@ -113,25 +101,28 @@ function baseUrl(req) {
   return (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 }
 
-function newRef() {
+async function newRef() {
   for (;;) {
     const ref = `TC${randomChars(6)}`;
-    if (!db.prepare('SELECT 1 FROM enrollments WHERE ref = ?').get(ref)) return ref;
+    if (!(await db.get('SELECT 1 AS x FROM enrollments WHERE ref = ?', ref))) return ref;
   }
 }
 
-const getModule = (id) => db.prepare('SELECT * FROM modules WHERE id = ?').get(id);
-const getClass = (id) => (id ? db.prepare('SELECT * FROM classes WHERE id = ?').get(id) : null);
-const getEnrollment = (id) => db.prepare('SELECT * FROM enrollments WHERE id = ?').get(id);
+const getModule = (id) => (id ? db.get('SELECT * FROM modules WHERE id = ?', id) : undefined);
+const getClass = async (id) => (id ? db.get('SELECT * FROM classes WHERE id = ?', id) : null);
+const getEnrollment = (id) => (id ? db.get('SELECT * FROM enrollments WHERE id = ?', id) : undefined);
+const getVideo = (id) => (id ? db.get('SELECT * FROM videos WHERE id = ?', id) : undefined);
 
 /** Paid or under-review seats, plus unpaid ones for 24h so nobody can block a class by never paying. */
-function seatsTaken(classId) {
-  return db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM enrollments WHERE class_id = ? AND (status IN ('pending_review', 'confirmed')
-          OR (status = 'awaiting_payment' AND created_at > datetime('now', '-1 day')))`
-    )
-    .get(classId).n;
+async function seatsTaken(classId) {
+  const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const row = await db.get(
+    `SELECT COUNT(*) AS n FROM enrollments WHERE class_id = ? AND (status IN ('pending_review', 'confirmed')
+        OR (status = 'awaiting_payment' AND created_at > ?))`,
+    classId,
+    dayAgo
+  );
+  return row.n;
 }
 
 function deleteVideoFile(filename) {
@@ -185,30 +176,37 @@ app.use(securityHeaders);
 app.use(express.json({ limit: '100kb' }));
 app.use('/api', requireAppHeader);
 
-// Wrap route handlers so thrown HttpErrors and async rejections reach the error handler.
+// Wrap route handlers and middleware so thrown HttpErrors and async rejections reach the error handler.
 const h = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+app.get(
+  '/api/health',
+  h(async (req, res) => {
+    await db.get('SELECT 1 AS ok');
+    res.json({ ok: true, db: db.kind });
+  })
+);
 
 // ------------------------------- Public ------------------------------------
 
 app.get(
   '/api/public/catalog',
-  h((req, res) => {
-    const s = getSettings();
-    const modules = db
-      .prepare(
-        `SELECT m.id, m.title, m.description, m.price_self, m.price_live, m.price_physical,
-                (SELECT COUNT(*) FROM videos v WHERE v.module_id = m.id) AS video_count
-           FROM modules m WHERE m.active = 1 ORDER BY m.sort, m.id`
-      )
-      .all();
-    const classes = db
-      .prepare(
-        `SELECT c.id, c.module_id, c.mode, c.title, c.starts_at, c.duration_min, c.location, c.capacity
-           FROM classes c JOIN modules m ON m.id = c.module_id
-          WHERE m.active = 1 AND c.starts_at >= ? ORDER BY c.starts_at`
-      )
-      .all(nowNairobi())
-      .map((c) => ({
+  h(async (req, res) => {
+    const s = await getSettings();
+    const modules = await db.all(
+      `SELECT m.id, m.title, m.description, m.price_self, m.price_live, m.price_physical,
+              (SELECT COUNT(*) FROM videos v WHERE v.module_id = m.id) AS video_count
+         FROM modules m WHERE m.active = 1 ORDER BY m.sort, m.id`
+    );
+    const rows = await db.all(
+      `SELECT c.id, c.module_id, c.mode, c.title, c.starts_at, c.duration_min, c.location, c.capacity
+         FROM classes c JOIN modules m ON m.id = c.module_id
+        WHERE m.active = 1 AND c.starts_at >= ? ORDER BY c.starts_at`,
+      nowNairobi()
+    );
+    const classes = [];
+    for (const c of rows) {
+      classes.push({
         id: c.id,
         module_id: c.module_id,
         mode: c.mode,
@@ -216,8 +214,9 @@ app.get(
         starts_at: c.starts_at,
         duration_min: c.duration_min,
         location: c.mode === 'physical' ? c.location : '',
-        full: c.capacity > 0 && seatsTaken(c.id) >= c.capacity,
-      }));
+        full: c.capacity > 0 && (await seatsTaken(c.id)) >= c.capacity,
+      });
+    }
     res.json({
       school: { name: s.school_name, tagline: s.tagline, contact_phone: s.contact_phone, contact_email: s.contact_email },
       prices: { self: +s.default_price_self, live: +s.default_price_live, physical: +s.default_price_physical },
@@ -251,45 +250,49 @@ function newPassword(v) {
  * Starts a student session. Only the newest MAX_STUDENT_DEVICES sessions are kept, so an
  * account shared with friends keeps logging the others out.
  */
-function startStudentSession(req, res, studentId) {
+async function startStudentSession(req, res, studentId) {
   const token = randomToken();
   const now = Date.now();
-  tx(() => {
-    db.prepare('DELETE FROM student_sessions WHERE expires_at < ?').run(now);
-    db.prepare('INSERT INTO student_sessions (token_hash, student_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)').run(
+  await db.tx(async (t) => {
+    await t.run('DELETE FROM student_sessions WHERE expires_at < ?', now);
+    await t.run(
+      'INSERT INTO student_sessions (token_hash, student_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)',
       sha256(token),
       studentId,
       now + STUDENT_SESSION_MS,
       now,
       String(req.get('user-agent') || '').slice(0, 200)
     );
-    db.prepare(
+    await t.run(
       `DELETE FROM student_sessions WHERE student_id = ? AND token_hash NOT IN
-         (SELECT token_hash FROM student_sessions WHERE student_id = ? ORDER BY created_at DESC LIMIT ?)`
-    ).run(studentId, studentId, MAX_STUDENT_DEVICES);
-    db.prepare('UPDATE students SET last_login_at = ? WHERE id = ?').run(nowIso(), studentId);
+         (SELECT token_hash FROM student_sessions WHERE student_id = ? ORDER BY created_at DESC LIMIT ?)`,
+      studentId,
+      studentId,
+      MAX_STUDENT_DEVICES
+    );
+    await t.run('UPDATE students SET last_login_at = ? WHERE id = ?', nowIso(), studentId);
   });
   setCookie(res, 'tc_student', token, { maxAgeSec: STUDENT_SESSION_MS / 1000, sameSite: 'Lax' });
 }
 
-function studentAuth(req, res, next) {
+const studentAuth = h(async (req, res, next) => {
   const token = parseCookies(req).tc_student;
   const student =
     token &&
-    db
-      .prepare(
-        `SELECT s.* FROM student_sessions ss JOIN students s ON s.id = ss.student_id
-          WHERE ss.token_hash = ? AND ss.expires_at > ? AND s.active = 1`
-      )
-      .get(sha256(token), Date.now());
+    (await db.get(
+      `SELECT s.* FROM student_sessions ss JOIN students s ON s.id = ss.student_id
+        WHERE ss.token_hash = ? AND ss.expires_at > ? AND s.active = 1`,
+      sha256(token),
+      Date.now()
+    ));
   if (!student) return res.status(401).json({ error: 'Please log in.' });
   req.student = student;
   next();
-}
+});
 
 /** Attaches registrations made before the account existed. Only call when we know the student owns the email. */
 function claimEnrollmentsByEmail(student) {
-  db.prepare('UPDATE enrollments SET student_id = ? WHERE student_id IS NULL AND email = ?').run(student.id, student.email.toLowerCase());
+  return db.run('UPDATE enrollments SET student_id = ? WHERE student_id IS NULL AND email = ?', student.id, student.email.toLowerCase());
 }
 
 /** Only allow same-site relative paths as a post-login destination. */
@@ -303,16 +306,16 @@ app.get('/api/auth/config', (req, res) => res.json({ google: Boolean(GOOGLE) }))
 app.post(
   '/api/auth/signup',
   authLimit,
-  h((req, res) => {
+  h(async (req, res) => {
     const b = req.body || {};
     const name = text(b.name, 100, { required: true, label: 'Name' });
     const mail = email(b.email);
     const pw = newPassword(b.password);
-    if (db.prepare('SELECT 1 FROM students WHERE email = ?').get(mail)) {
+    if (await db.get('SELECT 1 AS x FROM students WHERE email = ?', mail)) {
       throw new HttpError(409, 'An account with that email already exists. Log in instead.');
     }
-    const r = db.prepare('INSERT INTO students (name, email, pass_hash) VALUES (?, ?, ?)').run(name, mail, hashPassword(pw));
-    startStudentSession(req, res, Number(r.lastInsertRowid));
+    const r = await db.get('INSERT INTO students (name, email, pass_hash) VALUES (?, ?, ?) RETURNING id', name, mail, hashPassword(pw));
+    await startStudentSession(req, res, r.id);
     res.json({ ok: true });
   })
 );
@@ -320,8 +323,8 @@ app.post(
 app.post(
   '/api/auth/login',
   authLimit,
-  h((req, res) => {
-    const s = db.prepare('SELECT * FROM students WHERE email = ?').get(String(req.body?.email || '').trim().toLowerCase());
+  h(async (req, res) => {
+    const s = await db.get('SELECT * FROM students WHERE email = ?', String(req.body?.email || '').trim().toLowerCase());
     if (s && !s.pass_hash && s.google_sub) {
       throw new HttpError(401, 'This account signs in with Google. Use "Continue with Google".');
     }
@@ -329,30 +332,33 @@ app.post(
       throw new HttpError(401, 'Wrong email or password.');
     }
     if (!s.active) throw new HttpError(403, 'This account has been disabled. Please contact us.');
-    startStudentSession(req, res, s.id);
+    await startStudentSession(req, res, s.id);
     res.json({ ok: true });
   })
 );
 
-app.post('/api/auth/logout', (req, res) => {
-  const token = parseCookies(req).tc_student;
-  if (token) db.prepare('DELETE FROM student_sessions WHERE token_hash = ?').run(sha256(token));
-  setCookie(res, 'tc_student', '', { maxAgeSec: 0, sameSite: 'Lax' });
-  res.json({ ok: true });
-});
+app.post(
+  '/api/auth/logout',
+  h(async (req, res) => {
+    const token = parseCookies(req).tc_student;
+    if (token) await db.run('DELETE FROM student_sessions WHERE token_hash = ?', sha256(token));
+    setCookie(res, 'tc_student', '', { maxAgeSec: 0, sameSite: 'Lax' });
+    res.json({ ok: true });
+  })
+);
 
 app.post(
   '/api/auth/forgot',
   authLimit,
   h(async (req, res) => {
-    const s = db.prepare('SELECT * FROM students WHERE email = ? AND active = 1').get(email(req.body?.email));
+    const s = await db.get('SELECT * FROM students WHERE email = ? AND active = 1', email(req.body?.email));
     if (s) {
       const token = randomToken();
-      db.prepare('DELETE FROM password_resets WHERE student_id = ? OR expires_at < ?').run(s.id, Date.now());
-      db.prepare('INSERT INTO password_resets (token_hash, student_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), s.id, Date.now() + 3600 * 1000);
+      await db.run('DELETE FROM password_resets WHERE student_id = ? OR expires_at < ?', s.id, Date.now());
+      await db.run('INSERT INTO password_resets (token_hash, student_id, expires_at) VALUES (?, ?, ?)', sha256(token), s.id, Date.now() + 3600 * 1000);
       await sendMail({
         to: s.email,
-        ...emails.passwordReset({ name: s.name, link: `${baseUrl(req)}/login?reset=${token}`, settings: getSettings() }),
+        ...emails.passwordReset({ name: s.name, link: `${baseUrl(req)}/login?reset=${token}`, settings: await getSettings() }),
       });
     }
     // Same answer whether or not the account exists, so nobody can probe for emails.
@@ -363,22 +369,24 @@ app.post(
 app.post(
   '/api/auth/reset',
   authLimit,
-  h((req, res) => {
-    const row = db
-      .prepare('SELECT * FROM password_resets WHERE token_hash = ? AND expires_at > ?')
-      .get(sha256(String(req.body?.token || '')), Date.now());
+  h(async (req, res) => {
+    const row = await db.get(
+      'SELECT * FROM password_resets WHERE token_hash = ? AND expires_at > ?',
+      sha256(String(req.body?.token || '')),
+      Date.now()
+    );
     if (!row) throw bad('This reset link has expired or was already used. Ask for a new one.');
     const pw = newPassword(req.body?.password);
-    tx(() => {
+    await db.tx(async (t) => {
       // Receiving the email proves the student owns the address.
-      db.prepare('UPDATE students SET pass_hash = ?, email_verified = 1 WHERE id = ?').run(hashPassword(pw), row.student_id);
-      db.prepare('DELETE FROM password_resets WHERE student_id = ?').run(row.student_id);
-      db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(row.student_id);
+      await t.run('UPDATE students SET pass_hash = ?, email_verified = 1 WHERE id = ?', hashPassword(pw), row.student_id);
+      await t.run('DELETE FROM password_resets WHERE student_id = ?', row.student_id);
+      await t.run('DELETE FROM student_sessions WHERE student_id = ?', row.student_id);
     });
-    const s = db.prepare('SELECT * FROM students WHERE id = ?').get(row.student_id);
+    const s = await db.get('SELECT * FROM students WHERE id = ?', row.student_id);
     if (!s.active) throw new HttpError(403, 'This account has been disabled. Please contact us.');
-    claimEnrollmentsByEmail(s);
-    startStudentSession(req, res, s.id);
+    await claimEnrollmentsByEmail(s);
+    await startStudentSession(req, res, s.id);
     res.json({ ok: true });
   })
 );
@@ -427,77 +435,86 @@ app.get(
     if (!g.sub || !g.email || !g.email_verified) return fail('google_unverified');
     const mail = String(g.email).toLowerCase();
 
-    let s = db.prepare('SELECT * FROM students WHERE google_sub = ?').get(g.sub);
+    let s = await db.get('SELECT * FROM students WHERE google_sub = ?', g.sub);
     if (!s) {
-      const existing = db.prepare('SELECT * FROM students WHERE email = ?').get(mail);
+      const existing = await db.get('SELECT * FROM students WHERE email = ?', mail);
       if (existing) {
         // Google has proven this person owns the email. If the password account was never verified,
         // someone else may have registered it, so drop that password and sign out its sessions.
-        tx(() => {
-          db.prepare(
-            'UPDATE students SET google_sub = ?, pass_hash = CASE WHEN email_verified = 1 THEN pass_hash ELSE NULL END, email_verified = 1 WHERE id = ?'
-          ).run(g.sub, existing.id);
-          if (!existing.email_verified) db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(existing.id);
+        await db.tx(async (t) => {
+          await t.run(
+            'UPDATE students SET google_sub = ?, pass_hash = CASE WHEN email_verified = 1 THEN pass_hash ELSE NULL END, email_verified = 1 WHERE id = ?',
+            g.sub,
+            existing.id
+          );
+          if (!existing.email_verified) await t.run('DELETE FROM student_sessions WHERE student_id = ?', existing.id);
         });
-        s = db.prepare('SELECT * FROM students WHERE id = ?').get(existing.id);
+        s = await db.get('SELECT * FROM students WHERE id = ?', existing.id);
       } else {
         const name = String(g.name || mail.split('@')[0]).slice(0, 100);
-        const r = db.prepare('INSERT INTO students (name, email, google_sub, email_verified) VALUES (?, ?, ?, 1)').run(name, mail, g.sub);
-        s = db.prepare('SELECT * FROM students WHERE id = ?').get(Number(r.lastInsertRowid));
+        s = await db.get('INSERT INTO students (name, email, google_sub, email_verified) VALUES (?, ?, ?, 1) RETURNING *', name, mail, g.sub);
       }
     }
     if (!s.active) return fail('disabled');
-    claimEnrollmentsByEmail(s);
-    startStudentSession(req, res, s.id);
+    await claimEnrollmentsByEmail(s);
+    await startStudentSession(req, res, s.id);
     res.redirect(safeNext(next));
   })
 );
 
 // ------------------------------- Student dashboard -------------------------
 
-function libraryModuleIds(studentId) {
-  return db
-    .prepare(
-      `SELECT DISTINCT module_id FROM enrollments
-        WHERE student_id = ? AND track = 'self' AND status = 'confirmed' AND code_used_at IS NOT NULL`
-    )
-    .all(studentId)
-    .map((r) => r.module_id);
+async function libraryModuleIds(studentId) {
+  const rows = await db.all(
+    `SELECT DISTINCT module_id FROM enrollments
+      WHERE student_id = ? AND track = 'self' AND status = 'confirmed' AND code_used_at IS NOT NULL`,
+    studentId
+  );
+  return rows.map((r) => r.module_id);
 }
 
 app.post(
   '/api/enroll',
   enrollLimit,
   studentAuth,
-  h((req, res) => {
+  h(async (req, res) => {
     const b = req.body || {};
     const s = req.student;
     const track = String(b.track);
     if (!TRACKS.includes(track)) throw bad('Choose how you want to learn.');
     const tel = phone(b.phone || s.phone);
-    const mod = getModule(optionalId(b.module_id));
+    const mod = await getModule(optionalId(b.module_id));
     if (!mod || !mod.active) throw bad('Choose a module.');
 
     let classId = null;
     if (track !== 'self') {
       classId = optionalId(b.class_id);
       if (classId) {
-        const cls = getClass(classId);
+        const cls = await getClass(classId);
         if (!cls || cls.module_id !== mod.id || cls.mode !== track || cls.starts_at < nowNairobi()) {
           throw bad('That class is no longer available. Pick another date.');
         }
-        if (cls.capacity > 0 && seatsTaken(cls.id) >= cls.capacity) throw bad('That class is full. Pick another date.');
+        if (cls.capacity > 0 && (await seatsTaken(cls.id)) >= cls.capacity) throw bad('That class is full. Pick another date.');
       }
     }
 
-    const ref = newRef();
+    const ref = await newRef();
     const amount = mod[PRICE_COL[track]];
-    tx(() => {
-      db.prepare(
+    await db.tx(async (t) => {
+      await t.run(
         `INSERT INTO enrollments (ref, name, email, phone, track, module_id, class_id, amount, student_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(ref, s.name, s.email.toLowerCase(), tel, track, mod.id, classId, amount, s.id);
-      if (tel !== s.phone) db.prepare('UPDATE students SET phone = ? WHERE id = ?').run(tel, s.id);
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ref,
+        s.name,
+        s.email.toLowerCase(),
+        tel,
+        track,
+        mod.id,
+        classId,
+        amount,
+        s.id
+      );
+      if (tel !== s.phone) await t.run('UPDATE students SET phone = ? WHERE id = ?', tel, s.id);
     });
     res.json({ ref, amount, track, module: mod.title });
   })
@@ -505,55 +522,62 @@ app.post(
 
 app.use('/api/me', studentAuth);
 
-app.get('/api/me', (req, res) => {
-  const s = req.student;
-  const enrollments = db
-    .prepare(
-      `SELECT e.ref, e.track, e.amount, e.status, e.mpesa_code, e.reject_reason, e.code_used_at, e.created_at,
-              m.title AS module_title, c.title AS class_title, c.starts_at, c.duration_min, c.location, c.meeting_link
-         FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
-        WHERE e.student_id = ? ORDER BY e.created_at DESC`
-    )
-    .all(s.id)
-    .map((e) => ({ ...e, meeting_link: e.status === 'confirmed' && e.track === 'live' ? e.meeting_link || '' : '' }));
-  const library = libraryModuleIds(s.id)
-    .map(getModule)
-    .filter(Boolean)
-    .sort((a, b) => a.sort - b.sort || a.id - b.id)
-    .map((m) => ({
-      id: m.id,
-      title: m.title,
-      description: m.description,
-      videos: db.prepare('SELECT id, title FROM videos WHERE module_id = ? ORDER BY sort, id').all(m.id),
-    }));
-  const st = getSettings();
-  res.json({
-    student: { name: s.name, email: s.email, phone: s.phone, google: Boolean(s.google_sub), has_password: Boolean(s.pass_hash) },
-    enrollments,
-    library,
-    max_devices: MAX_STUDENT_DEVICES,
-    payment: { method: st.mpesa_method, number: st.mpesa_number, account_name: st.mpesa_account_name },
-  });
-});
+app.get(
+  '/api/me',
+  h(async (req, res) => {
+    const s = req.student;
+    const enrollments = (
+      await db.all(
+        `SELECT e.ref, e.track, e.amount, e.status, e.mpesa_code, e.reject_reason, e.code_used_at, e.created_at,
+                m.title AS module_title, c.title AS class_title, c.starts_at, c.duration_min, c.location, c.meeting_link
+           FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
+          WHERE e.student_id = ? ORDER BY e.created_at DESC`,
+        s.id
+      )
+    ).map((e) => ({ ...e, meeting_link: e.status === 'confirmed' && e.track === 'live' ? e.meeting_link || '' : '' }));
+
+    const ids = await libraryModuleIds(s.id);
+    const mods = ids.length
+      ? await db.all(`SELECT * FROM modules WHERE id IN (${ids.map(() => '?').join(', ')}) ORDER BY sort, id`, ...ids)
+      : [];
+    const library = [];
+    for (const m of mods) {
+      library.push({
+        id: m.id,
+        title: m.title,
+        description: m.description,
+        videos: await db.all('SELECT id, title FROM videos WHERE module_id = ? ORDER BY sort, id', m.id),
+      });
+    }
+    const st = await getSettings();
+    res.json({
+      student: { name: s.name, email: s.email, phone: s.phone, google: Boolean(s.google_sub), has_password: Boolean(s.pass_hash) },
+      enrollments,
+      library,
+      max_devices: MAX_STUDENT_DEVICES,
+      payment: { method: st.mpesa_method, number: st.mpesa_number, account_name: st.mpesa_account_name },
+    });
+  })
+);
 
 app.put(
   '/api/me',
-  h((req, res) => {
+  h(async (req, res) => {
     const name = text(req.body?.name, 100, { required: true, label: 'Name' });
     const tel = req.body?.phone ? phone(req.body.phone) : '';
-    db.prepare('UPDATE students SET name = ?, phone = ? WHERE id = ?').run(name, tel, req.student.id);
+    await db.run('UPDATE students SET name = ?, phone = ? WHERE id = ?', name, tel, req.student.id);
     res.json({ ok: true });
   })
 );
 
 app.post(
   '/api/me/password',
-  h((req, res) => {
+  h(async (req, res) => {
     const s = req.student;
     if (s.pass_hash && !verifyPassword(String(req.body?.current || ''), s.pass_hash)) throw bad('Current password is wrong.');
     const pw = newPassword(req.body?.next);
-    db.prepare('UPDATE students SET pass_hash = ? WHERE id = ?').run(hashPassword(pw), s.id);
-    db.prepare('DELETE FROM student_sessions WHERE student_id = ? AND token_hash != ?').run(s.id, sha256(parseCookies(req).tc_student));
+    await db.run('UPDATE students SET pass_hash = ? WHERE id = ?', hashPassword(pw), s.id);
+    await db.run('DELETE FROM student_sessions WHERE student_id = ? AND token_hash != ?', s.id, sha256(parseCookies(req).tc_student));
     res.json({ ok: true });
   })
 );
@@ -564,22 +588,23 @@ app.post(
   h(async (req, res) => {
     const code = normalizeCode(req.body?.mpesa_code);
     if (!/^[A-Z0-9]{10}$/.test(code)) throw bad('An M-PESA code is 10 letters and numbers, e.g. SJK4H7Q2LM.');
-    const e = db.prepare('SELECT * FROM enrollments WHERE ref = ? AND student_id = ?').get(String(req.params.ref).toUpperCase(), req.student.id);
+    const e = await db.get('SELECT * FROM enrollments WHERE ref = ? AND student_id = ?', String(req.params.ref).toUpperCase(), req.student.id);
     if (!e) throw new HttpError(404, 'Registration not found.');
     if (e.status === 'confirmed') throw bad('This payment is already confirmed.');
-    if (db.prepare('SELECT 1 FROM enrollments WHERE mpesa_code = ? AND id != ?').get(code, e.id)) {
+    if (await db.get('SELECT 1 AS x FROM enrollments WHERE mpesa_code = ? AND id != ?', code, e.id)) {
       throw new HttpError(409, 'That M-PESA code has already been used for another registration.');
     }
-    db.prepare("UPDATE enrollments SET mpesa_code = ?, paid_at = ?, status = 'pending_review', reject_reason = NULL WHERE id = ?").run(
+    await db.run(
+      "UPDATE enrollments SET mpesa_code = ?, paid_at = ?, status = 'pending_review', reject_reason = NULL WHERE id = ?",
       code,
       nowIso(),
       e.id
     );
-    const st = getSettings();
+    const st = await getSettings();
     if (st.notify_email) {
       const msg = emails.paymentToReview({
         enrollment: { ...e, mpesa_code: code },
-        module: getModule(e.module_id),
+        module: await getModule(e.module_id),
         baseUrl: baseUrl(req),
         staffPath: STAFF_PATH,
       });
@@ -592,24 +617,26 @@ app.post(
 app.post(
   '/api/me/redeem',
   rateLimit(10, 15 * 60 * 1000),
-  h((req, res) => {
+  h(async (req, res) => {
     const code = normalizeCode(req.body?.code);
     if (code.length !== 8) throw bad('Codes are 8 characters, like ABCD-2345.');
-    const e = db.prepare("SELECT * FROM enrollments WHERE code_hash = ? AND status = 'confirmed'").get(sha256(code));
+    const e = await db.get("SELECT * FROM enrollments WHERE code_hash = ? AND status = 'confirmed'", sha256(code));
     if (!e) throw bad('That code is not valid.');
     if (e.track !== 'self') throw bad('That code is your ticket for a class, not for videos. Keep it and show it to your teacher.');
     if (e.student_id && e.student_id !== req.student.id) throw bad('That code belongs to another account.');
     if (e.code_used_at) throw bad('That code has already been used. Contact us if you need a new one.');
-    db.prepare('UPDATE enrollments SET code_used_at = ?, student_id = ? WHERE id = ?').run(nowIso(), req.student.id, e.id);
-    res.json({ ok: true, module: getModule(e.module_id).title });
+    // The code_used_at IS NULL guard makes redeeming atomic if the same code is submitted twice at once.
+    const r = await db.run('UPDATE enrollments SET code_used_at = ?, student_id = ? WHERE id = ? AND code_used_at IS NULL', nowIso(), req.student.id, e.id);
+    if (!r.changes) throw bad('That code has already been used. Contact us if you need a new one.');
+    res.json({ ok: true, module: (await getModule(e.module_id)).title });
   })
 );
 
 app.get(
   '/api/me/video/:id',
-  h((req, res) => {
-    const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(optionalId(req.params.id));
-    if (!video || !libraryModuleIds(req.student.id).includes(video.module_id)) {
+  h(async (req, res) => {
+    const video = await getVideo(optionalId(req.params.id));
+    if (!video || !(await libraryModuleIds(req.student.id)).includes(video.module_id)) {
       throw new HttpError(403, 'You do not have access to this video.');
     }
     streamVideo(req, res, video);
@@ -618,20 +645,20 @@ app.get(
 
 // ------------------------------- Staff auth --------------------------------
 
-function staffAuth(req, res, next) {
+const staffAuth = h(async (req, res, next) => {
   const token = parseCookies(req).tc_staff;
   const staff =
     token &&
-    db
-      .prepare(
-        `SELECT s.id, s.name, s.email, s.role FROM staff_sessions ss JOIN staff s ON s.id = ss.staff_id
-          WHERE ss.token_hash = ? AND ss.expires_at > ? AND s.active = 1`
-      )
-      .get(sha256(token), Date.now());
+    (await db.get(
+      `SELECT s.id, s.name, s.email, s.role FROM staff_sessions ss JOIN staff s ON s.id = ss.staff_id
+        WHERE ss.token_hash = ? AND ss.expires_at > ? AND s.active = 1`,
+      sha256(token),
+      Date.now()
+    ));
   if (!staff) return res.status(401).json({ error: 'Please log in.' });
   req.staff = staff;
   next();
-}
+});
 function adminOnly(req, res, next) {
   if (req.staff.role !== 'admin') return res.status(403).json({ error: 'Only an admin can do that.' });
   next();
@@ -640,29 +667,28 @@ function adminOnly(req, res, next) {
 app.post(
   '/api/staff/login',
   rateLimit(10, 15 * 60 * 1000),
-  h((req, res) => {
-    const s = db.prepare('SELECT * FROM staff WHERE email = ? AND active = 1').get(String(req.body?.email || '').trim());
+  h(async (req, res) => {
+    const s = await db.get('SELECT * FROM staff WHERE email = ? AND active = 1', String(req.body?.email || '').trim().toLowerCase());
     if (!s || !verifyPassword(String(req.body?.password || ''), s.pass_hash)) {
       throw new HttpError(401, 'Wrong email or password.');
     }
     const token = randomToken();
-    db.prepare('DELETE FROM staff_sessions WHERE expires_at < ?').run(Date.now());
-    db.prepare('INSERT INTO staff_sessions (token_hash, staff_id, expires_at) VALUES (?, ?, ?)').run(
-      sha256(token),
-      s.id,
-      Date.now() + STAFF_SESSION_MS
-    );
+    await db.run('DELETE FROM staff_sessions WHERE expires_at < ?', Date.now());
+    await db.run('INSERT INTO staff_sessions (token_hash, staff_id, expires_at) VALUES (?, ?, ?)', sha256(token), s.id, Date.now() + STAFF_SESSION_MS);
     setCookie(res, 'tc_staff', token, { maxAgeSec: STAFF_SESSION_MS / 1000 });
     res.json({ id: s.id, name: s.name, email: s.email, role: s.role });
   })
 );
 
-app.post('/api/staff/logout', (req, res) => {
-  const token = parseCookies(req).tc_staff;
-  if (token) db.prepare('DELETE FROM staff_sessions WHERE token_hash = ?').run(sha256(token));
-  setCookie(res, 'tc_staff', '', { maxAgeSec: 0 });
-  res.json({ ok: true });
-});
+app.post(
+  '/api/staff/logout',
+  h(async (req, res) => {
+    const token = parseCookies(req).tc_staff;
+    if (token) await db.run('DELETE FROM staff_sessions WHERE token_hash = ?', sha256(token));
+    setCookie(res, 'tc_staff', '', { maxAgeSec: 0 });
+    res.json({ ok: true });
+  })
+);
 
 app.use('/api/staff', staffAuth);
 app.use('/api/admin', staffAuth, adminOnly);
@@ -671,50 +697,54 @@ app.get('/api/staff/me', (req, res) => res.json({ ...req.staff, mail_configured:
 
 app.post(
   '/api/staff/password',
-  h((req, res) => {
-    const s = db.prepare('SELECT pass_hash FROM staff WHERE id = ?').get(req.staff.id);
+  h(async (req, res) => {
+    const s = await db.get('SELECT pass_hash FROM staff WHERE id = ?', req.staff.id);
     if (!verifyPassword(String(req.body?.current || ''), s.pass_hash)) throw bad('Current password is wrong.');
     const next = String(req.body?.next || '');
     if (next.length < 10) throw bad('New password must be at least 10 characters.');
-    db.prepare('UPDATE staff SET pass_hash = ? WHERE id = ?').run(hashPassword(next), req.staff.id);
+    await db.run('UPDATE staff SET pass_hash = ? WHERE id = ?', hashPassword(next), req.staff.id);
     // Log out every other session for this account.
-    db.prepare('DELETE FROM staff_sessions WHERE staff_id = ? AND token_hash != ?').run(req.staff.id, sha256(parseCookies(req).tc_staff));
+    await db.run('DELETE FROM staff_sessions WHERE staff_id = ? AND token_hash != ?', req.staff.id, sha256(parseCookies(req).tc_staff));
     res.json({ ok: true });
   })
 );
 
 // ------------------------------- Classes (admin + teachers) ----------------
 
-app.get('/api/staff/options', (req, res) => {
-  res.json({
-    modules: db.prepare('SELECT id, title, active FROM modules ORDER BY sort, id').all(),
-    teachers: db.prepare('SELECT id, name, role FROM staff WHERE active = 1 ORDER BY name').all(),
-  });
-});
+app.get(
+  '/api/staff/options',
+  h(async (req, res) => {
+    res.json({
+      modules: await db.all('SELECT id, title, active FROM modules ORDER BY sort, id'),
+      teachers: await db.all('SELECT id, name, role FROM staff WHERE active = 1 ORDER BY name'),
+    });
+  })
+);
 
-app.get('/api/staff/classes', (req, res) => {
-  const scope = req.query.scope === 'past' ? '<' : '>=';
-  const order = scope === '<' ? 'DESC' : 'ASC';
-  const rows = db
-    .prepare(
+app.get(
+  '/api/staff/classes',
+  h(async (req, res) => {
+    const past = req.query.scope === 'past';
+    const rows = await db.all(
       `SELECT c.*, m.title AS module_title, s.name AS teacher_name,
               (SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.id AND e.status = 'confirmed') AS confirmed,
-              (SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.id AND e.status IN ('awaiting_payment','pending_review')) AS pending,
+              (SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.id AND e.status IN ('awaiting_payment', 'pending_review')) AS pending,
               (SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.id AND e.code_used_at IS NOT NULL) AS checked_in
          FROM classes c JOIN modules m ON m.id = c.module_id LEFT JOIN staff s ON s.id = c.teacher_id
-        WHERE c.starts_at ${scope} ? ORDER BY c.starts_at ${order} LIMIT 200`
-    )
-    .all(nowNairobi());
-  res.json(rows);
-});
+        WHERE c.starts_at ${past ? '<' : '>='} ? ORDER BY c.starts_at ${past ? 'DESC' : 'ASC'} LIMIT 200`,
+      nowNairobi()
+    );
+    res.json(rows);
+  })
+);
 
-function readClass(b, staffId) {
+async function readClass(b, staffId) {
   const mode = String(b.mode);
   if (mode !== 'live' && mode !== 'physical') throw bad('Mode must be live or physical.');
-  const mod = getModule(optionalId(b.module_id));
+  const mod = await getModule(optionalId(b.module_id));
   if (!mod) throw bad('Choose a module.');
   const teacherId = optionalId(b.teacher_id) ?? staffId;
-  if (!db.prepare('SELECT 1 FROM staff WHERE id = ?').get(teacherId)) throw bad('Unknown teacher.');
+  if (!(await db.get('SELECT 1 AS x FROM staff WHERE id = ?', teacherId))) throw bad('Unknown teacher.');
   return {
     module_id: mod.id,
     mode,
@@ -727,63 +757,66 @@ function readClass(b, staffId) {
     teacher_id: teacherId,
   };
 }
+const classValues = (c) => [c.module_id, c.mode, c.title, c.starts_at, c.duration_min, c.location, c.meeting_link, c.capacity, c.teacher_id];
 
 app.post(
   '/api/staff/classes',
-  h((req, res) => {
-    const c = readClass(req.body || {}, req.staff.id);
-    const r = db
-      .prepare(
-        `INSERT INTO classes (module_id, mode, title, starts_at, duration_min, location, meeting_link, capacity, teacher_id)
-         VALUES (:module_id, :mode, :title, :starts_at, :duration_min, :location, :meeting_link, :capacity, :teacher_id)`
-      )
-      .run(c);
-    res.json({ id: Number(r.lastInsertRowid) });
+  h(async (req, res) => {
+    const c = await readClass(req.body || {}, req.staff.id);
+    const r = await db.get(
+      `INSERT INTO classes (module_id, mode, title, starts_at, duration_min, location, meeting_link, capacity, teacher_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      ...classValues(c)
+    );
+    res.json({ id: r.id });
   })
 );
 
 app.put(
   '/api/staff/classes/:id',
-  h((req, res) => {
-    const existing = getClass(optionalId(req.params.id));
+  h(async (req, res) => {
+    const existing = await getClass(optionalId(req.params.id));
     if (!existing) throw new HttpError(404, 'Class not found.');
-    const c = readClass(req.body || {}, req.staff.id);
+    const c = await readClass(req.body || {}, req.staff.id);
     if (c.mode !== existing.mode || c.module_id !== existing.module_id) {
-      const has = db.prepare('SELECT 1 FROM enrollments WHERE class_id = ?').get(existing.id);
-      if (has) throw bad('Students are already booked, so the module and mode cannot change. Create a new class instead.');
+      if (await db.get('SELECT 1 AS x FROM enrollments WHERE class_id = ?', existing.id)) {
+        throw bad('Students are already booked, so the module and mode cannot change. Create a new class instead.');
+      }
     }
-    db.prepare(
-      `UPDATE classes SET module_id = :module_id, mode = :mode, title = :title, starts_at = :starts_at, duration_min = :duration_min,
-              location = :location, meeting_link = :meeting_link, capacity = :capacity, teacher_id = :teacher_id WHERE id = :id`
-    ).run({ ...c, id: existing.id });
+    await db.run(
+      `UPDATE classes SET module_id = ?, mode = ?, title = ?, starts_at = ?, duration_min = ?,
+              location = ?, meeting_link = ?, capacity = ?, teacher_id = ? WHERE id = ?`,
+      ...classValues(c),
+      existing.id
+    );
     res.json({ ok: true });
   })
 );
 
 app.delete(
   '/api/staff/classes/:id',
-  h((req, res) => {
-    const cls = getClass(optionalId(req.params.id));
+  h(async (req, res) => {
+    const cls = await getClass(optionalId(req.params.id));
     if (!cls) throw new HttpError(404, 'Class not found.');
     if (req.staff.role !== 'admin' && cls.teacher_id !== req.staff.id) throw new HttpError(403, 'You can only delete your own classes.');
-    const booked = db.prepare("SELECT COUNT(*) AS n FROM enrollments WHERE class_id = ? AND status != 'rejected'").get(cls.id).n;
+    const { n: booked } = await db.get("SELECT COUNT(*) AS n FROM enrollments WHERE class_id = ? AND status != 'rejected'", cls.id);
     if (booked) throw bad(`${booked} student(s) are booked on this class. Move them to another class first.`);
-    db.prepare('DELETE FROM classes WHERE id = ?').run(cls.id);
+    await db.run('DELETE FROM classes WHERE id = ?', cls.id);
     res.json({ ok: true });
   })
 );
 
 app.get(
   '/api/staff/classes/:id/roster',
-  h((req, res) => {
-    const cls = getClass(optionalId(req.params.id));
+  h(async (req, res) => {
+    const cls = await getClass(optionalId(req.params.id));
     if (!cls) throw new HttpError(404, 'Class not found.');
-    const rows = db
-      .prepare(
-        `SELECT id, ref, name, email, phone, status, code_used_at, link_sent_at FROM enrollments
-          WHERE class_id = ? AND status != 'rejected' ORDER BY status = 'confirmed' DESC, name`
-      )
-      .all(cls.id);
+    const rows = await db.all(
+      `SELECT id, ref, name, email, phone, status, code_used_at, link_sent_at FROM enrollments
+        WHERE class_id = ? AND status != 'rejected'
+        ORDER BY CASE WHEN status = 'confirmed' THEN 0 ELSE 1 END, name`,
+      cls.id
+    );
     res.json(rows);
   })
 );
@@ -791,36 +824,33 @@ app.get(
 app.post(
   '/api/staff/classes/:id/send-links',
   h(async (req, res) => {
-    const cls = getClass(optionalId(req.params.id));
+    const cls = await getClass(optionalId(req.params.id));
     if (!cls) throw new HttpError(404, 'Class not found.');
     if (cls.mode !== 'live') throw bad('Meeting links are only for live online classes.');
     if (!cls.meeting_link) throw bad('Add a meeting link to the class first.');
     const onlyNew = req.body?.only_new !== false;
-    const students = db
-      .prepare(
-        `SELECT * FROM enrollments WHERE class_id = ? AND status = 'confirmed' ${onlyNew ? 'AND link_sent_at IS NULL' : ''}`
-      )
-      .all(cls.id);
-    const s = getSettings();
-    let sent = 0;
+    const students = await db.all(
+      `SELECT * FROM enrollments WHERE class_id = ? AND status = 'confirmed' ${onlyNew ? 'AND link_sent_at IS NULL' : ''}`,
+      cls.id
+    );
+    const s = await getSettings();
     for (const e of students) {
       await sendMail({ to: e.email, ...emails.meetingLink({ enrollment: e, cls, settings: s }) });
-      db.prepare('UPDATE enrollments SET link_sent_at = ? WHERE id = ?').run(nowIso(), e.id);
-      sent++;
+      await db.run('UPDATE enrollments SET link_sent_at = ? WHERE id = ?', nowIso(), e.id);
     }
-    res.json({ sent });
+    res.json({ sent: students.length });
   })
 );
 
 app.post(
   '/api/staff/classes/:id/message',
   h(async (req, res) => {
-    const cls = getClass(optionalId(req.params.id));
+    const cls = await getClass(optionalId(req.params.id));
     if (!cls) throw new HttpError(404, 'Class not found.');
     const subject = text(req.body?.subject, 150, { required: true, label: 'Subject' });
     const body = text(req.body?.body, 5000, { required: true, label: 'Message' });
-    const students = db.prepare("SELECT * FROM enrollments WHERE class_id = ? AND status = 'confirmed'").all(cls.id);
-    const s = getSettings();
+    const students = await db.all("SELECT * FROM enrollments WHERE class_id = ? AND status = 'confirmed'", cls.id);
+    const s = await getSettings();
     for (const e of students) await sendMail({ to: e.email, ...emails.classMessage({ enrollment: e, subject, body, settings: s }) });
     res.json({ sent: students.length });
   })
@@ -829,15 +859,14 @@ app.post(
 /** Teachers enter a student's one-time code at the start of class. Each code checks in once. */
 app.post(
   '/api/staff/checkin',
-  h((req, res) => {
+  h(async (req, res) => {
     const code = normalizeCode(req.body?.code);
-    const e = db
-      .prepare(
-        `SELECT e.*, m.title AS module_title, c.title AS class_title, c.starts_at
-           FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
-          WHERE e.code_hash = ? AND e.status = 'confirmed'`
-      )
-      .get(sha256(code));
+    const e = await db.get(
+      `SELECT e.*, m.title AS module_title, c.title AS class_title, c.starts_at
+         FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
+        WHERE e.code_hash = ? AND e.status = 'confirmed'`,
+      sha256(code)
+    );
     if (!e) throw new HttpError(404, 'Code not recognised. Ask the student to check their email.');
     if (e.track === 'self') throw bad('That is a video-library code, not a class ticket.');
     const student = {
@@ -849,53 +878,65 @@ app.post(
       class: e.class_title || '(no class assigned)',
       starts_at: e.starts_at,
     };
-    if (e.code_used_at) return res.status(409).json({ error: `Already checked in at ${new Date(e.code_used_at).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' })}.`, student });
-    db.prepare('UPDATE enrollments SET code_used_at = ? WHERE id = ?').run(nowIso(), e.id);
+    const already = (at) =>
+      res.status(409).json({
+        error: `Already checked in at ${new Date(at).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' })}.`,
+        student,
+      });
+    if (e.code_used_at) return already(e.code_used_at);
+    const at = nowIso();
+    const r = await db.run('UPDATE enrollments SET code_used_at = ? WHERE id = ? AND code_used_at IS NULL', at, e.id);
+    if (!r.changes) return already(at);
     res.json({ ok: true, student });
   })
 );
 
 // ------------------------------- Admin: payments ---------------------------
 
-app.get('/api/admin/enrollments', (req, res) => {
-  const status = String(req.query.status || 'pending_review');
-  const where = status === 'all' ? '' : 'WHERE e.status = ?';
-  const args = status === 'all' ? [] : [status];
-  const rows = db
-    .prepare(
-      `SELECT e.*, m.title AS module_title, c.title AS class_title, c.starts_at AS class_starts_at
-         FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
-         ${where} ORDER BY COALESCE(e.paid_at, e.created_at) DESC LIMIT 300`
-    )
-    .all(...args)
-    .map(({ code_hash, ...r }) => ({ ...r, has_code: Boolean(code_hash) }));
-  const counts = Object.fromEntries(
-    db.prepare('SELECT status, COUNT(*) AS n FROM enrollments GROUP BY status').all().map((r) => [r.status, r.n])
-  );
-  res.json({ rows, counts });
-});
+app.get(
+  '/api/admin/enrollments',
+  h(async (req, res) => {
+    const status = String(req.query.status || 'pending_review');
+    const where = status === 'all' ? '' : 'WHERE e.status = ?';
+    const args = status === 'all' ? [] : [status];
+    const rows = (
+      await db.all(
+        `SELECT e.*, m.title AS module_title, c.title AS class_title, c.starts_at AS class_starts_at
+           FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
+           ${where} ORDER BY COALESCE(e.paid_at, e.created_at) DESC LIMIT 300`,
+        ...args
+      )
+    ).map(({ code_hash, ...r }) => ({ ...r, has_code: Boolean(code_hash) }));
+    const counts = Object.fromEntries(
+      (await db.all('SELECT status, COUNT(*) AS n FROM enrollments GROUP BY status')).map((r) => [r.status, r.n])
+    );
+    res.json({ rows, counts });
+  })
+);
 
 /** Issue (or reissue) a one-time code and email it. Reissuing invalidates the previous code. */
 async function issueCode(req, e) {
   const code = newAccessCode();
-  tx(() => {
-    db.prepare(
-      `UPDATE enrollments SET status = 'confirmed', code_hash = ?, code_used_at = NULL, reject_reason = NULL,
-              confirmed_at = COALESCE(confirmed_at, ?), confirmed_by = COALESCE(confirmed_by, ?) WHERE id = ?`
-    ).run(code.hash, nowIso(), req.staff.id, e.id);
-  });
-  const cls = getClass(e.class_id);
+  await db.run(
+    `UPDATE enrollments SET status = 'confirmed', code_hash = ?, code_used_at = NULL, reject_reason = NULL,
+            confirmed_at = COALESCE(confirmed_at, ?), confirmed_by = COALESCE(confirmed_by, ?) WHERE id = ?`,
+    code.hash,
+    nowIso(),
+    req.staff.id,
+    e.id
+  );
+  const cls = await getClass(e.class_id);
   const msg = emails.confirmation({
     enrollment: e,
-    module: getModule(e.module_id),
+    module: await getModule(e.module_id),
     cls,
     code: code.display,
-    settings: getSettings(),
+    settings: await getSettings(),
     baseUrl: baseUrl(req),
   });
   const mailStatus = await sendMail({ to: e.email, ...msg });
   if (e.track === 'live' && cls && cls.meeting_link) {
-    db.prepare('UPDATE enrollments SET link_sent_at = ? WHERE id = ?').run(nowIso(), e.id);
+    await db.run('UPDATE enrollments SET link_sent_at = ? WHERE id = ?', nowIso(), e.id);
   }
   return { code: code.display, mail: mailStatus };
 }
@@ -903,7 +944,7 @@ async function issueCode(req, e) {
 app.post(
   '/api/admin/enrollments/:id/confirm',
   h(async (req, res) => {
-    const e = getEnrollment(optionalId(req.params.id));
+    const e = await getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
     if (e.status === 'confirmed') throw bad('Already confirmed. Use "New code" to send a fresh code.');
     res.json(await issueCode(req, e));
@@ -913,7 +954,7 @@ app.post(
 app.post(
   '/api/admin/enrollments/:id/reissue',
   h(async (req, res) => {
-    const e = getEnrollment(optionalId(req.params.id));
+    const e = await getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
     if (e.status !== 'confirmed') throw bad('Only confirmed registrations have codes.');
     res.json(await issueCode(req, e));
@@ -923,14 +964,20 @@ app.post(
 app.post(
   '/api/admin/enrollments/:id/reject',
   h(async (req, res) => {
-    const e = getEnrollment(optionalId(req.params.id));
+    const e = await getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
     const reason = text(req.body?.reason, 300);
-    db.prepare("UPDATE enrollments SET status = 'rejected', reject_reason = ?, code_hash = NULL WHERE id = ?").run(reason || null, e.id);
+    await db.run("UPDATE enrollments SET status = 'rejected', reject_reason = ?, code_hash = NULL WHERE id = ?", reason || null, e.id);
     if (req.body?.notify !== false) {
       await sendMail({
         to: e.email,
-        ...emails.rejection({ enrollment: e, module: getModule(e.module_id), reason, settings: getSettings(), baseUrl: baseUrl(req) }),
+        ...emails.rejection({
+          enrollment: e,
+          module: await getModule(e.module_id),
+          reason,
+          settings: await getSettings(),
+          baseUrl: baseUrl(req),
+        }),
       });
     }
     res.json({ ok: true });
@@ -939,36 +986,37 @@ app.post(
 
 app.put(
   '/api/admin/enrollments/:id/class',
-  h((req, res) => {
-    const e = getEnrollment(optionalId(req.params.id));
+  h(async (req, res) => {
+    const e = await getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
     if (e.track === 'self') throw bad('Self-paced students are not booked on classes.');
     const classId = optionalId(req.body?.class_id);
     if (classId) {
-      const cls = getClass(classId);
+      const cls = await getClass(classId);
       if (!cls || cls.mode !== e.track || cls.module_id !== e.module_id) throw bad('That class is for a different module or mode.');
     }
-    db.prepare('UPDATE enrollments SET class_id = ?, link_sent_at = NULL WHERE id = ?').run(classId, e.id);
+    await db.run('UPDATE enrollments SET class_id = ?, link_sent_at = NULL WHERE id = ?', classId, e.id);
     res.json({ ok: true });
   })
 );
 
 // ------------------------------- Admin: modules, prices, videos -----------
 
-app.get('/api/admin/modules', (req, res) => {
-  res.json(
-    db
-      .prepare(
+app.get(
+  '/api/admin/modules',
+  h(async (req, res) => {
+    res.json(
+      await db.all(
         `SELECT m.*, (SELECT COUNT(*) FROM videos v WHERE v.module_id = m.id) AS video_count,
                 (SELECT COUNT(*) FROM enrollments e WHERE e.module_id = m.id AND e.status = 'confirmed') AS students
            FROM modules m ORDER BY m.sort, m.id`
       )
-      .all()
-  );
-});
+    );
+  })
+);
 
-function readModule(b, fallback) {
-  const s = getSettings();
+async function readModule(b, fallback) {
+  const s = await getSettings();
   const price = (key, def) => int(b[key] ?? fallback?.[key] ?? def, { min: 0, max: 1_000_000, label: 'Price' });
   return {
     title: text(b.title ?? fallback?.title, 150, { required: true, label: 'Title' }),
@@ -980,45 +1028,48 @@ function readModule(b, fallback) {
     active: b.active === undefined ? (fallback?.active ?? 1) : b.active ? 1 : 0,
   };
 }
+const moduleValues = (m) => [m.title, m.description, m.sort, m.price_self, m.price_live, m.price_physical, m.active];
 
 app.post(
   '/api/admin/modules',
-  h((req, res) => {
-    const m = readModule(req.body || {});
-    const r = db
-      .prepare(
-        `INSERT INTO modules (title, description, sort, price_self, price_live, price_physical, active)
-         VALUES (:title, :description, :sort, :price_self, :price_live, :price_physical, :active)`
-      )
-      .run(m);
-    res.json({ id: Number(r.lastInsertRowid) });
+  h(async (req, res) => {
+    const m = await readModule(req.body || {});
+    const r = await db.get(
+      `INSERT INTO modules (title, description, sort, price_self, price_live, price_physical, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      ...moduleValues(m)
+    );
+    res.json({ id: r.id });
   })
 );
 
 app.put(
   '/api/admin/modules/:id',
-  h((req, res) => {
-    const existing = getModule(optionalId(req.params.id));
+  h(async (req, res) => {
+    const existing = await getModule(optionalId(req.params.id));
     if (!existing) throw new HttpError(404, 'Module not found.');
-    const m = readModule(req.body || {}, existing);
-    db.prepare(
-      `UPDATE modules SET title = :title, description = :description, sort = :sort, price_self = :price_self,
-              price_live = :price_live, price_physical = :price_physical, active = :active WHERE id = :id`
-    ).run({ ...m, id: existing.id });
+    const m = await readModule(req.body || {}, existing);
+    await db.run(
+      `UPDATE modules SET title = ?, description = ?, sort = ?, price_self = ?, price_live = ?, price_physical = ?, active = ?
+        WHERE id = ?`,
+      ...moduleValues(m),
+      existing.id
+    );
     res.json({ ok: true });
   })
 );
 
 app.delete(
   '/api/admin/modules/:id',
-  h((req, res) => {
-    const m = getModule(optionalId(req.params.id));
+  h(async (req, res) => {
+    const m = await getModule(optionalId(req.params.id));
     if (!m) throw new HttpError(404, 'Module not found.');
     const used =
-      db.prepare('SELECT 1 FROM enrollments WHERE module_id = ?').get(m.id) || db.prepare('SELECT 1 FROM classes WHERE module_id = ?').get(m.id);
+      (await db.get('SELECT 1 AS x FROM enrollments WHERE module_id = ?', m.id)) ||
+      (await db.get('SELECT 1 AS x FROM classes WHERE module_id = ?', m.id));
     if (used) throw bad('Students or classes already use this module. Hide it instead of deleting it.');
-    const files = db.prepare('SELECT filename FROM videos WHERE module_id = ?').all(m.id);
-    db.prepare('DELETE FROM modules WHERE id = ?').run(m.id);
+    const files = await db.all('SELECT filename FROM videos WHERE module_id = ?', m.id);
+    await db.run('DELETE FROM modules WHERE id = ?', m.id);
     files.forEach((f) => deleteVideoFile(f.filename));
     res.json({ ok: true });
   })
@@ -1026,11 +1077,14 @@ app.delete(
 
 app.post(
   '/api/admin/modules/apply-default-prices',
-  h((req, res) => {
-    const s = getSettings();
-    const r = db
-      .prepare('UPDATE modules SET price_self = ?, price_live = ?, price_physical = ?')
-      .run(+s.default_price_self, +s.default_price_live, +s.default_price_physical);
+  h(async (req, res) => {
+    const s = await getSettings();
+    const r = await db.run(
+      'UPDATE modules SET price_self = ?, price_live = ?, price_physical = ?',
+      +s.default_price_self,
+      +s.default_price_live,
+      +s.default_price_physical
+    );
     res.json({ updated: r.changes });
   })
 );
@@ -1044,24 +1098,33 @@ const upload = multer({
   fileFilter: (req, file, cb) => cb(null, /^video\//.test(file.mimetype)),
 });
 
-app.get('/api/admin/videos', (req, res) => {
-  res.json(db.prepare('SELECT id, module_id, title, mime, size, sort, created_at FROM videos ORDER BY module_id, sort, id').all());
-});
+app.get(
+  '/api/admin/videos',
+  h(async (req, res) => {
+    res.json(await db.all('SELECT id, module_id, title, mime, size, sort, created_at FROM videos ORDER BY module_id, sort, id'));
+  })
+);
 
 app.post(
   '/api/admin/videos',
   upload.single('file'),
-  h((req, res) => {
+  h(async (req, res) => {
     if (!req.file) throw bad('Choose a video file (mp4 or webm).');
     try {
-      const mod = getModule(optionalId(req.body.module_id));
+      const mod = await getModule(optionalId(req.body.module_id));
       if (!mod) throw bad('Choose a module.');
       const title = text(req.body.title, 200) || path.parse(req.file.originalname).name;
-      const sort = db.prepare('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM videos WHERE module_id = ?').get(mod.id).n;
-      const r = db
-        .prepare('INSERT INTO videos (module_id, title, filename, mime, size, sort) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(mod.id, title, req.file.filename, req.file.mimetype, req.file.size, sort);
-      res.json({ id: Number(r.lastInsertRowid) });
+      const { n: sort } = await db.get('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM videos WHERE module_id = ?', mod.id);
+      const r = await db.get(
+        'INSERT INTO videos (module_id, title, filename, mime, size, sort) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+        mod.id,
+        title,
+        req.file.filename,
+        req.file.mimetype,
+        req.file.size,
+        sort
+      );
+      res.json({ id: r.id });
     } catch (err) {
       deleteVideoFile(req.file.filename);
       throw err;
@@ -1071,10 +1134,11 @@ app.post(
 
 app.put(
   '/api/admin/videos/:id',
-  h((req, res) => {
-    const v = db.prepare('SELECT * FROM videos WHERE id = ?').get(optionalId(req.params.id));
+  h(async (req, res) => {
+    const v = await getVideo(optionalId(req.params.id));
     if (!v) throw new HttpError(404, 'Video not found.');
-    db.prepare('UPDATE videos SET title = ?, sort = ? WHERE id = ?').run(
+    await db.run(
+      'UPDATE videos SET title = ?, sort = ? WHERE id = ?',
       text(req.body?.title ?? v.title, 200, { required: true, label: 'Title' }),
       int(req.body?.sort ?? v.sort, { min: -10000, max: 10000, label: 'Order' }),
       v.id
@@ -1085,10 +1149,10 @@ app.put(
 
 app.delete(
   '/api/admin/videos/:id',
-  h((req, res) => {
-    const v = db.prepare('SELECT * FROM videos WHERE id = ?').get(optionalId(req.params.id));
+  h(async (req, res) => {
+    const v = await getVideo(optionalId(req.params.id));
     if (!v) throw new HttpError(404, 'Video not found.');
-    db.prepare('DELETE FROM videos WHERE id = ?').run(v.id);
+    await db.run('DELETE FROM videos WHERE id = ?', v.id);
     deleteVideoFile(v.filename);
     res.json({ ok: true });
   })
@@ -1096,14 +1160,14 @@ app.delete(
 
 app.get(
   '/api/admin/videos/:id/stream',
-  h((req, res) => {
-    const v = db.prepare('SELECT * FROM videos WHERE id = ?').get(optionalId(req.params.id));
+  h(async (req, res) => {
+    const v = await getVideo(optionalId(req.params.id));
     if (!v) throw new HttpError(404, 'Video not found.');
     streamVideo(req, res, v);
   })
 );
 
-// ------------------------------- Admin: settings, staff, outbox ------------
+// ------------------------------- Admin: settings, staff, students, outbox --
 
 const EDITABLE_SETTINGS = [
   'school_name',
@@ -1119,11 +1183,14 @@ const EDITABLE_SETTINGS = [
   'notify_email',
 ];
 
-app.get('/api/admin/settings', (req, res) => res.json(getSettings()));
+app.get(
+  '/api/admin/settings',
+  h(async (req, res) => res.json(await getSettings()))
+);
 
 app.put(
   '/api/admin/settings',
-  h((req, res) => {
+  h(async (req, res) => {
     const b = req.body || {};
     const out = {};
     for (const key of EDITABLE_SETTINGS) {
@@ -1135,35 +1202,42 @@ app.put(
       } else if (key === 'notify_email' || key === 'contact_email') out[key] = b[key] ? email(b[key]) : '';
       else out[key] = text(b[key], 300);
     }
-    setSettings(out);
-    res.json(getSettings());
+    await setSettings(out);
+    res.json(await getSettings());
   })
 );
 
-app.get('/api/admin/staff', (req, res) => {
-  res.json(db.prepare('SELECT id, name, email, role, active, created_at FROM staff ORDER BY role, name').all());
-});
+app.get(
+  '/api/admin/staff',
+  h(async (req, res) => {
+    res.json(await db.all('SELECT id, name, email, role, active, created_at FROM staff ORDER BY role, name'));
+  })
+);
 
 app.post(
   '/api/admin/staff',
-  h((req, res) => {
+  h(async (req, res) => {
     const b = req.body || {};
     const role = b.role === 'admin' ? 'admin' : 'teacher';
     const password = String(b.password || '');
     if (password.length < 10) throw bad('Password must be at least 10 characters.');
     const mail = email(b.email);
-    if (db.prepare('SELECT 1 FROM staff WHERE email = ?').get(mail)) throw bad('Someone already uses that email.');
-    const r = db
-      .prepare('INSERT INTO staff (name, email, pass_hash, role) VALUES (?, ?, ?, ?)')
-      .run(text(b.name, 100, { required: true, label: 'Name' }), mail, hashPassword(password), role);
-    res.json({ id: Number(r.lastInsertRowid) });
+    if (await db.get('SELECT 1 AS x FROM staff WHERE email = ?', mail)) throw bad('Someone already uses that email.');
+    const r = await db.get(
+      'INSERT INTO staff (name, email, pass_hash, role) VALUES (?, ?, ?, ?) RETURNING id',
+      text(b.name, 100, { required: true, label: 'Name' }),
+      mail,
+      hashPassword(password),
+      role
+    );
+    res.json({ id: r.id });
   })
 );
 
 app.put(
   '/api/admin/staff/:id',
-  h((req, res) => {
-    const s = db.prepare('SELECT * FROM staff WHERE id = ?').get(optionalId(req.params.id));
+  h(async (req, res) => {
+    const s = await db.get('SELECT * FROM staff WHERE id = ?', optionalId(req.params.id));
     if (!s) throw new HttpError(404, 'Staff member not found.');
     if (s.id === req.staff.id) throw bad('You cannot change your own role or disable yourself.');
     const b = req.body || {};
@@ -1171,43 +1245,49 @@ app.put(
     const active = b.active === undefined ? s.active : b.active ? 1 : 0;
     const password = b.password ? String(b.password) : null;
     if (password && password.length < 10) throw bad('Password must be at least 10 characters.');
-    tx(() => {
-      db.prepare('UPDATE staff SET role = ?, active = ? WHERE id = ?').run(role, active, s.id);
-      if (password) db.prepare('UPDATE staff SET pass_hash = ? WHERE id = ?').run(hashPassword(password), s.id);
-      if (!active || password) db.prepare('DELETE FROM staff_sessions WHERE staff_id = ?').run(s.id);
+    await db.tx(async (t) => {
+      await t.run('UPDATE staff SET role = ?, active = ? WHERE id = ?', role, active, s.id);
+      if (password) await t.run('UPDATE staff SET pass_hash = ? WHERE id = ?', hashPassword(password), s.id);
+      if (!active || password) await t.run('DELETE FROM staff_sessions WHERE staff_id = ?', s.id);
     });
     res.json({ ok: true });
   })
 );
 
-app.get('/api/admin/outbox', (req, res) => {
-  res.json(db.prepare('SELECT * FROM outbox ORDER BY id DESC LIMIT 100').all());
-});
+app.get(
+  '/api/admin/outbox',
+  h(async (req, res) => {
+    res.json(await db.all('SELECT * FROM outbox ORDER BY id DESC LIMIT 100'));
+  })
+);
 
-app.get('/api/admin/students', (req, res) => {
-  res.json(
-    db
-      .prepare(
+app.get(
+  '/api/admin/students',
+  h(async (req, res) => {
+    res.json(
+      await db.all(
         `SELECT s.id, s.name, s.email, s.phone, s.active, s.created_at, s.last_login_at,
-                s.google_sub IS NOT NULL AS google, s.pass_hash IS NOT NULL AS has_password,
+                CASE WHEN s.google_sub IS NULL THEN 0 ELSE 1 END AS google,
+                CASE WHEN s.pass_hash IS NULL THEN 0 ELSE 1 END AS has_password,
                 (SELECT COUNT(*) FROM enrollments e WHERE e.student_id = s.id) AS registrations,
                 (SELECT COUNT(*) FROM enrollments e WHERE e.student_id = s.id AND e.status = 'confirmed') AS paid,
                 (SELECT COUNT(*) FROM student_sessions ss WHERE ss.student_id = s.id AND ss.expires_at > ?) AS devices
-           FROM students s ORDER BY s.created_at DESC LIMIT 500`
+           FROM students s ORDER BY s.created_at DESC LIMIT 500`,
+        Date.now()
       )
-      .all(Date.now())
-  );
-});
+    );
+  })
+);
 
 app.put(
   '/api/admin/students/:id',
-  h((req, res) => {
-    const s = db.prepare('SELECT * FROM students WHERE id = ?').get(optionalId(req.params.id));
+  h(async (req, res) => {
+    const s = await db.get('SELECT * FROM students WHERE id = ?', optionalId(req.params.id));
     if (!s) throw new HttpError(404, 'Student not found.');
     const active = req.body?.active ? 1 : 0;
-    tx(() => {
-      db.prepare('UPDATE students SET active = ? WHERE id = ?').run(active, s.id);
-      if (!active) db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(s.id);
+    await db.tx(async (t) => {
+      await t.run('UPDATE students SET active = ? WHERE id = ?', active, s.id);
+      if (!active) await t.run('DELETE FROM student_sessions WHERE student_id = ?', s.id);
     });
     res.json({ ok: true });
   })
@@ -1215,8 +1295,8 @@ app.put(
 
 app.post(
   '/api/admin/students/:id/signout',
-  h((req, res) => {
-    const r = db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(optionalId(req.params.id));
+  h(async (req, res) => {
+    const r = await db.run('DELETE FROM student_sessions WHERE student_id = ?', optionalId(req.params.id));
     res.json({ signed_out: r.changes });
   })
 );
@@ -1248,8 +1328,19 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong on our side.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Travia Cafe running on http://localhost:${PORT}`);
-  console.log(`Staff dashboard: http://localhost:${PORT}${STAFF_PATH}`);
-  if (!mailConfigured) console.log('SMTP is not configured: emails are logged to the console and the dashboard outbox.');
+async function start() {
+  await init();
+  await ensureAdmin();
+  const { n: modules } = await db.get('SELECT COUNT(*) AS n FROM modules');
+  app.listen(PORT, () => {
+    console.log(`Travia Cafe running on http://localhost:${PORT} (database: ${db.kind})`);
+    console.log(`Staff dashboard: http://localhost:${PORT}${STAFF_PATH}`);
+    if (!mailConfigured) console.log('SMTP is not configured: emails are logged to the console and the dashboard outbox.');
+    if (!modules && process.env.NODE_ENV !== 'production') console.log('No modules yet. Run `npm run seed` to load demo data.');
+  });
+}
+
+start().catch((err) => {
+  console.error('Failed to start:', err);
+  process.exit(1);
 });

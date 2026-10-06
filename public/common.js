@@ -77,3 +77,24 @@ async function withBusy(button, fn) {
     button.disabled = false;
   }
 }
+
+/** Copies each table's column headings onto its cells, so the phone layout can label stacked cards. */
+function labelTables() {
+  document.querySelectorAll('.table-wrap table').forEach((table) => {
+    const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      [...tr.children].forEach((td, i) => {
+        if (!td.hasAttribute('data-label')) td.setAttribute('data-label', td.colSpan > 1 ? '' : heads[i] || '');
+      });
+    });
+  });
+}
+let labelQueued = false;
+new MutationObserver(() => {
+  if (labelQueued) return;
+  labelQueued = true;
+  requestAnimationFrame(() => {
+    labelQueued = false;
+    labelTables();
+  });
+}).observe(document.documentElement, { childList: true, subtree: true });

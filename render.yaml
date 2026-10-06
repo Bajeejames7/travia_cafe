@@ -1,0 +1,49 @@
+# Render Blueprint: New > Blueprint > pick this repo.
+# The database is external (Aiven PostgreSQL); paste its connection details when Render asks.
+services:
+  - type: web
+    name: travia-cafe
+    runtime: node
+    plan: starter            # a persistent disk needs a paid instance
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: travia-videos    # uploaded videos live here and survive deploys
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22.13.0"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATA_DIR
+        value: /var/data
+      - key: STAFF_PATH
+        generateValue: true  # random secret path for the staff dashboard; read it in the Render dashboard
+      - key: DATABASE_URL    # Aiven service URI, e.g. postgres://avnadmin:...@...aivencloud.com:12345/defaultdb?sslmode=require
+        sync: false
+      - key: DATABASE_CA_CERT  # contents of Aiven's ca.pem, so the database certificate is verified
+        sync: false
+      - key: PUBLIC_URL      # e.g. https://travia-cafe.onrender.com or your own domain
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
