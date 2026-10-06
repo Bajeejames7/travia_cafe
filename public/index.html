@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Travia Cafe — Cybersecurity School</title>
+  <meta name="description" content="Learn cybersecurity your way: self-paced videos, live online classes, or in-person sessions. Pay securely with M-PESA.">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/common.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap row">
+      <a class="brand" href="/"><span class="logo">&gt;_</span><span data-school>Travia Cafe</span></a>
+      <nav>
+        <a href="#tracks">Ways to learn</a>
+        <a href="#modules">Prices</a>
+        <a href="#pay">How to pay</a>
+        <a href="#resume">Already registered?</a>
+        <a class="btn small ghost" href="/learn">My videos</a>
+        <a class="btn small" href="#enroll">Enrol</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero wrap">
+      <p class="eyebrow">Cybersecurity school</p>
+      <h1>Learn security the way that fits your life.</h1>
+      <p class="lead" data-tagline>Practical cybersecurity training — self-paced, live online, or in person.</p>
+      <div class="row">
+        <a class="btn" href="#enroll">Enrol now</a>
+        <a class="btn ghost" href="#tracks">Compare options</a>
+      </div>
+    </section>
+
+    <section id="tracks" class="wrap">
+      <h2>Three ways to learn</h2>
+      <p class="muted">Every option is priced per module, so you only pay for what you take.</p>
+      <div class="grid3">
+        <article class="card">
+          <span class="tag">Self-paced</span>
+          <h3>Prerecorded video lessons</h3>
+          <p class="muted">For students who prefer to learn alone, at their own speed.</p>
+          <div class="price">KSh <span data-price="self">—</span> <small>per module</small></div>
+          <ul>
+            <li>Watch any time, as often as you like</li>
+            <li>Unlocked with a one-time code after payment</li>
+            <li>Start the same day your payment is confirmed</li>
+          </ul>
+          <a class="btn ghost" href="#enroll" data-pick="self">Choose self-paced</a>
+        </article>
+        <article class="card">
+          <span class="tag info">Live online</span>
+          <h3>Guided sessions over video call</h3>
+          <p class="muted">For students who want a teacher's guidance but are far away or have a busy schedule.</p>
+          <div class="price">KSh <span data-price="live">—</span> <small>per session</small></div>
+          <ul>
+            <li>Live teacher, real-time questions</li>
+            <li>Meeting link emailed after payment</li>
+            <li>Join from anywhere</li>
+          </ul>
+          <a class="btn ghost" href="#enroll" data-pick="live">Choose live online</a>
+        </article>
+        <article class="card">
+          <span class="tag ok">In person</span>
+          <h3>Physical classes</h3>
+          <p class="muted">For students who learn best face to face, with hands-on lab time.</p>
+          <div class="price">KSh <span data-price="physical">—</span> <small>per session</small></div>
+          <ul>
+            <li>Small groups with a teacher in the room</li>
+            <li>Your one-time code is your ticket</li>
+            <li>Venue and time sent by email</li>
+          </ul>
+          <a class="btn ghost" href="#enroll" data-pick="physical">Choose in person</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="modules" class="wrap">
+      <h2>Modules &amp; prices</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Module</th><th class="num">Self-paced</th><th class="num">Live online</th><th class="num">In person</th></tr>
+          </thead>
+          <tbody id="moduleRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="enroll" class="wrap">
+      <h2>Enrol</h2>
+      <div class="panel">
+        <form id="enrollForm" novalidate>
+          <div class="seg" role="radiogroup" aria-label="How do you want to learn?">
+            <input type="radio" name="track" id="t-self" value="self" checked>
+            <label for="t-self"><strong>Self-paced</strong><span>Prerecorded videos</span></label>
+            <input type="radio" name="track" id="t-live" value="live">
+            <label for="t-live"><strong>Live online</strong><span>Teacher on a video call</span></label>
+            <input type="radio" name="track" id="t-physical" value="physical">
+            <label for="t-physical"><strong>In person</strong><span>Physical class</span></label>
+          </div>
+          <div class="field-row">
+            <label>Module
+              <select name="module_id" required></select>
+            </label>
+            <label id="classField" hidden>Class date
+              <select name="class_id"></select>
+            </label>
+          </div>
+          <div class="field-row">
+            <label>Full name <input name="name" autocomplete="name" required maxlength="100"></label>
+            <label>Email <input name="email" type="email" autocomplete="email" required maxlength="200"></label>
+            <label>M-PESA phone number <input name="phone" type="tel" autocomplete="tel" placeholder="0712 345 678" required></label>
+          </div>
+          <div class="row">
+            <button class="btn" type="submit">Continue to payment — KSh <span id="enrollAmount">—</span></button>
+          </div>
+          <div id="enrollMsg"></div>
+        </form>
+
+        <div id="payStep" hidden>
+          <p class="muted">Registration saved. Your reference:</p>
+          <p class="big-ref" id="payRef"></p>
+          <p>Pay <strong>KSh <span id="payAmount"></span></strong> with M-PESA:</p>
+          <ol class="steps" id="payStepList"></ol>
+          <form id="payForm" novalidate>
+            <label>M-PESA transaction code (from the confirmation SMS)
+              <input name="mpesa_code" class="mono" placeholder="e.g. SJK4H7Q2LM" maxlength="12" autocapitalize="characters" required>
+            </label>
+            <button class="btn" type="submit">Submit payment</button>
+            <div id="payMsg"></div>
+          </form>
+        </div>
+
+        <div id="doneStep" hidden>
+          <div class="notice ok">
+            <strong>Thank you — payment submitted.</strong>
+            <p class="muted" style="margin:6px 0 0">We will check it against our M-PESA records and email your one-time code to
+              <strong id="doneEmail"></strong>. This is usually quick during working hours. Keep your reference
+              <span class="mono" id="doneRef"></span> in case you need to contact us.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pay" class="wrap">
+      <h2>How to pay with M-PESA</h2>
+      <ol class="steps" id="payGuide"></ol>
+      <div class="notice warn small">
+        Only pay to the number shown on this page and check the name in the M-PESA prompt before entering your PIN.
+        We will never call to ask for your PIN or ask you to "reverse" a payment.
+      </div>
+    </section>
+
+    <section id="resume" class="wrap">
+      <h2>Already registered?</h2>
+      <p class="muted">Paid but closed the page, or need to resend your M-PESA code? Look up your registration.</p>
+      <div class="panel">
+        <form id="lookupForm" novalidate>
+          <div class="field-row">
+            <label>Reference <input name="ref" class="mono" placeholder="TCXXXXXX" autocapitalize="characters" required></label>
+            <label>Email used to register <input name="email" type="email" required></label>
+          </div>
+          <button class="btn ghost" type="submit">Look up</button>
+        </form>
+        <div id="lookupResult"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap row">
+      <span>&copy; <span id="year"></span> <span data-school>Travia Cafe</span></span>
+      <span class="spacer"></span>
+      <span id="contactLine"></span>
+    </div>
+  </footer>
+</body>
+</html>

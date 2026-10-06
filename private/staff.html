@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Staff — Travia Cafe</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/common.js" defer></script>
+  <script src="{{STAFF_PATH}}/staff.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap row">
+      <span class="brand"><span class="logo">&gt;_</span>Staff area</span>
+      <nav id="who" hidden>
+        <span class="muted small" id="whoName"></span>
+        <button class="btn small ghost" id="logoutBtn" type="button">Log out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="loginView" class="panel" style="max-width:420px; margin:72px auto" hidden>
+      <h2>Staff login</h2>
+      <form id="loginForm" novalidate>
+        <label>Email <input name="email" type="email" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn" type="submit">Log in</button>
+      </form>
+      <div id="loginMsg"></div>
+    </section>
+
+    <section id="appView" hidden>
+      <div id="mailWarn"></div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div id="flash"></div>
+      <div id="view" class="stack"></div>
+    </section>
+  </main>
+</body>
+</html>

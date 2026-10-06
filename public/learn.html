@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My videos — Travia Cafe</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/common.js" defer></script>
+  <script src="/learn.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap row">
+      <a class="brand" href="/"><span class="logo">&gt;_</span><span>Travia Cafe</span></a>
+      <nav><a href="/#modules">Prices</a><a class="btn small" href="/#enroll">Enrol</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" style="padding-bottom:0">
+      <p class="eyebrow">Self-paced library</p>
+      <h1>My videos</h1>
+    </section>
+
+    <div id="library" class="library" hidden>
+      <aside class="panel lessons" id="lessonList"></aside>
+      <div class="player stack">
+        <video id="player" controls controlsList="nodownload noremoteplayback" disablePictureInPicture playsinline preload="metadata"></video>
+        <div>
+          <h2 id="nowTitle"></h2>
+          <p class="muted" id="nowModule"></p>
+        </div>
+      </div>
+    </div>
+
+    <section class="panel" style="margin-top:28px; max-width:560px">
+      <h3 id="redeemTitle">Enter your access code</h3>
+      <p class="muted small">You received an 8-character code by email after your payment was confirmed. Each code
+        works <strong>once</strong>, on the device you enter it on.</p>
+      <form id="redeemForm" novalidate>
+        <label>Access code
+          <input name="code" class="mono" placeholder="ABCD-2345" autocomplete="one-time-code" autocapitalize="characters" maxlength="12" required>
+        </label>
+        <button class="btn" type="submit">Unlock videos</button>
+      </form>
+      <div id="redeemMsg"></div>
+    </section>
+  </main>
+</body>
+</html>
