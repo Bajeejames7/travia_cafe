@@ -1,8 +1,8 @@
 'use strict';
-/* Public storefront: prices, enrolment, M-PESA payment submission. */
+/* Public storefront: prices, enrolment (requires a student account), M-PESA guide. */
 
 let catalog = null;
-let current = null; // { ref, email, amount }
+let me = null; // the logged-in student, or null
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const enrollForm = $('#enrollForm');
@@ -54,11 +54,23 @@ function renderCatalog() {
   updateForm();
 }
 
+function renderAuth() {
+  $('#enrollGate').hidden = Boolean(me);
+  enrollForm.phone.closest('.field-row').hidden = !me;
+  if (me) {
+    $('#authLink').textContent = 'My dashboard';
+    $('#authLink').href = '/account';
+    $('#enrollAs').innerHTML = `Enrolling as <strong>${esc(me.name)}</strong> (${esc(me.email)})`;
+    if (me.phone && !enrollForm.phone.value) enrollForm.phone.value = `0${me.phone.slice(3)}`;
+  }
+  updateForm();
+}
+
 function updateForm() {
+  if (!catalog) return;
   const t = track();
   const mod = selectedModule();
-  const classField = $('#classField');
-  classField.hidden = t === 'self';
+  $('#classField').hidden = t === 'self';
   if (t !== 'self' && mod) {
     const options = catalog.classes.filter((c) => c.module_id === mod.id && c.mode === t);
     enrollForm.class_id.innerHTML =
@@ -71,7 +83,10 @@ function updateForm() {
     const firstOpen = options.find((c) => !c.full);
     enrollForm.class_id.value = firstOpen ? firstOpen.id : '';
   }
-  $('#enrollAmount').textContent = mod ? ksh(priceFor(mod, t)) : '—';
+  const price = mod ? ksh(priceFor(mod, t)) : '—';
+  enrollForm.querySelector('[type=submit]').innerHTML = me
+    ? `Continue to payment — KSh ${price}`
+    : `Create account to enrol — KSh ${price}`;
 }
 
 enrollForm.addEventListener('change', (e) => {
@@ -87,80 +102,26 @@ document.querySelectorAll('[data-pick]').forEach((a) =>
 
 enrollForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!me) return location.assign('/login?mode=signup&next=/%23enroll');
   const msg = $('#enrollMsg');
   notice(msg);
-  const data = formData(enrollForm);
   try {
-    const r = await withBusy(enrollForm.querySelector('button[type=submit]'), () => api('/api/enroll', { method: 'POST', body: data }));
-    current = { ref: r.ref, email: data.email, amount: r.amount };
-    showPayStep();
+    await withBusy(enrollForm.querySelector('button[type=submit]'), () => api('/api/enroll', { method: 'POST', body: formData(enrollForm) }));
+    location.assign('/account#payments');
   } catch (err) {
+    if (err.status === 401) return location.assign('/login?next=/%23enroll');
     notice(msg, 'err', esc(err.message));
-  }
-});
-
-function showPayStep() {
-  enrollForm.hidden = true;
-  $('#payStep').hidden = false;
-  $('#payRef').textContent = current.ref;
-  $('#payAmount').textContent = ksh(current.amount);
-  $('#payStepList').innerHTML = paymentSteps(catalog.payment, current);
-  $('#enroll').scrollIntoView();
-}
-
-$('#payForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const msg = $('#payMsg');
-  notice(msg);
-  try {
-    await withBusy(e.target.querySelector('button'), () =>
-      api('/api/enroll/payment', { method: 'POST', body: { ref: current.ref, email: current.email, mpesa_code: e.target.mpesa_code.value } })
-    );
-    $('#payStep').hidden = true;
-    $('#doneStep').hidden = false;
-    $('#doneEmail').textContent = current.email;
-    $('#doneRef').textContent = current.ref;
-  } catch (err) {
-    notice(msg, 'err', esc(err.message));
-  }
-});
-
-const STATUS_TEXT = {
-  awaiting_payment: ['warn', 'Waiting for your M-PESA payment.'],
-  pending_review: ['info', 'Payment submitted — we are checking it. Your code will arrive by email.'],
-  confirmed: ['ok', 'Confirmed. Your one-time code was emailed to you.'],
-  rejected: ['err', 'We could not confirm this payment.'],
-};
-
-$('#lookupForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const out = $('#lookupResult');
-  notice(out);
-  const data = formData(e.target);
-  try {
-    const r = await withBusy(e.target.querySelector('button'), () => api('/api/enroll/status', { method: 'POST', body: data }));
-    const [kind, txt] = STATUS_TEXT[r.status] || ['', r.status];
-    let html = `<strong>${esc(r.module)}</strong> · ${esc(TRACK_LABEL[r.track])} · KSh ${ksh(r.amount)}<br>${txt}`;
-    if (r.reject_reason) html += `<br>Reason: ${esc(r.reject_reason)}`;
-    notice(out, kind === 'info' ? '' : kind, html);
-    if (r.status === 'awaiting_payment' || r.status === 'rejected' || r.status === 'pending_review') {
-      current = { ref: r.ref, email: data.email, amount: r.amount };
-      const again = document.createElement('button');
-      again.className = 'btn small';
-      again.type = 'button';
-      again.textContent = r.status === 'pending_review' ? 'Correct my M-PESA code' : 'Pay / submit M-PESA code';
-      again.addEventListener('click', () => {
-        $('#doneStep').hidden = true;
-        showPayStep();
-      });
-      out.appendChild(again);
-    }
-  } catch (err) {
-    notice(out, 'err', esc(err.message));
   }
 });
 
 $('#year').textContent = new Date().getFullYear();
+
+api('/api/me')
+  .then((r) => {
+    me = r.student;
+  })
+  .catch(() => {})
+  .finally(renderAuth);
 
 api('/api/public/catalog')
   .then((c) => {

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My dashboard — Travia Cafe</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/common.js" defer></script>
+  <script src="/account.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap row">
+      <a class="brand" href="/"><span class="logo">&gt;_</span><span>Travia Cafe</span></a>
+      <nav>
+        <a href="/#modules">Prices</a>
+        <a class="btn small hide-sm" href="/#enroll">Enrol in a module</a>
+        <button class="btn small ghost" id="logoutBtn" type="button">Log out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero dash-hero">
+      <p class="eyebrow">My dashboard</p>
+      <h1 id="hello">Welcome</h1>
+    </section>
+
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="courses" aria-selected="true">My courses</button>
+      <button role="tab" data-tab="classes" aria-selected="false">Classes</button>
+      <button role="tab" data-tab="payments" aria-selected="false">Payments <span class="count" id="dueCount" hidden></span></button>
+      <button role="tab" data-tab="profile" aria-selected="false">Profile</button>
+    </div>
+    <div id="flash"></div>
+
+    <section data-panel="courses" class="stack">
+      <div id="library" class="library" hidden>
+        <aside class="panel lessons" id="lessonList"></aside>
+        <div class="player stack">
+          <video id="player" controls controlsList="nodownload noremoteplayback" disablePictureInPicture playsinline preload="metadata"></video>
+          <div>
+            <h2 id="nowTitle"></h2>
+            <p class="muted" id="nowModule"></p>
+          </div>
+        </div>
+      </div>
+      <div id="noCourses" class="panel" hidden>
+        <h3>No video courses yet</h3>
+        <p class="muted">Enrol in a self-paced module, pay with M-PESA, and once we confirm your payment you'll get a code by email to unlock it here.</p>
+        <a class="btn" href="/#enroll">Browse modules</a>
+      </div>
+      <div class="panel narrow">
+        <h3>Unlock a course</h3>
+        <p class="muted small">Enter the 8-character code from your payment confirmation email.</p>
+        <form id="redeemForm" class="row" novalidate>
+          <input name="code" class="mono grow" placeholder="ABCD-2345" autocomplete="one-time-code" autocapitalize="characters" maxlength="12" required aria-label="Access code">
+          <button class="btn" type="submit">Unlock</button>
+        </form>
+      </div>
+    </section>
+
+    <section data-panel="classes" class="stack" hidden></section>
+    <section data-panel="payments" class="stack" hidden></section>
+
+    <section data-panel="profile" class="stack" hidden>
+      <div class="panel narrow">
+        <h3>Your details</h3>
+        <form id="profileForm" novalidate>
+          <label>Full name <input name="name" autocomplete="name" maxlength="100" required></label>
+          <label>Email <input name="email" type="email" disabled></label>
+          <label>M-PESA phone number <input name="phone" type="tel" autocomplete="tel" placeholder="0712 345 678"></label>
+          <button class="btn" type="submit">Save</button>
+        </form>
+      </div>
+      <div class="panel narrow">
+        <h3 id="pwTitle">Change password</h3>
+        <p class="muted small" id="googleNote" hidden>You sign in with Google. You can also set a password to log in with your email.</p>
+        <form id="passwordForm" novalidate>
+          <label id="currentPw">Current password <input name="current" type="password" autocomplete="current-password"></label>
+          <label>New password (8+ characters) <input name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+          <button class="btn" type="submit">Save password</button>
+        </form>
+      </div>
+      <p class="muted small" id="deviceNote"></p>
+    </section>
+  </main>
+</body>
+</html>

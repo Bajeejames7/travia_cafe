@@ -34,7 +34,6 @@ const PORT = Number(process.env.PORT) || 3000;
 const STAFF_PATH = '/' + String(process.env.STAFF_PATH || 'staff').replace(/^\/+|\/+$/g, '');
 const MAX_VIDEO_MB = Number(process.env.MAX_VIDEO_MB) || 2048;
 const STAFF_SESSION_MS = 12 * 60 * 60 * 1000;
-const VIEWER_COOKIE_SEC = 180 * 24 * 60 * 60;
 
 const TRACKS = ['self', 'live', 'physical'];
 const PRICE_COL = { self: 'price_self', live: 'price_live', physical: 'price_physical' };
@@ -229,18 +228,253 @@ app.get(
   })
 );
 
+// ------------------------------- Student accounts --------------------------
+
+const MAX_STUDENT_DEVICES = Number(process.env.MAX_STUDENT_DEVICES) || 2;
+const STUDENT_SESSION_MS = 60 * 24 * 60 * 60 * 1000;
+const GOOGLE =
+  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+    ? { id: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET }
+    : null;
+
+const authLimit = rateLimit(20, 15 * 60 * 1000);
 const enrollLimit = rateLimit(30, 15 * 60 * 1000);
+
+function newPassword(v) {
+  const s = String(v ?? '');
+  if (s.length < 8) throw bad('Password must be at least 8 characters.');
+  if (s.length > 200) throw bad('Password is too long.');
+  return s;
+}
+
+/**
+ * Starts a student session. Only the newest MAX_STUDENT_DEVICES sessions are kept, so an
+ * account shared with friends keeps logging the others out.
+ */
+function startStudentSession(req, res, studentId) {
+  const token = randomToken();
+  const now = Date.now();
+  tx(() => {
+    db.prepare('DELETE FROM student_sessions WHERE expires_at < ?').run(now);
+    db.prepare('INSERT INTO student_sessions (token_hash, student_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)').run(
+      sha256(token),
+      studentId,
+      now + STUDENT_SESSION_MS,
+      now,
+      String(req.get('user-agent') || '').slice(0, 200)
+    );
+    db.prepare(
+      `DELETE FROM student_sessions WHERE student_id = ? AND token_hash NOT IN
+         (SELECT token_hash FROM student_sessions WHERE student_id = ? ORDER BY created_at DESC LIMIT ?)`
+    ).run(studentId, studentId, MAX_STUDENT_DEVICES);
+    db.prepare('UPDATE students SET last_login_at = ? WHERE id = ?').run(nowIso(), studentId);
+  });
+  setCookie(res, 'tc_student', token, { maxAgeSec: STUDENT_SESSION_MS / 1000, sameSite: 'Lax' });
+}
+
+function studentAuth(req, res, next) {
+  const token = parseCookies(req).tc_student;
+  const student =
+    token &&
+    db
+      .prepare(
+        `SELECT s.* FROM student_sessions ss JOIN students s ON s.id = ss.student_id
+          WHERE ss.token_hash = ? AND ss.expires_at > ? AND s.active = 1`
+      )
+      .get(sha256(token), Date.now());
+  if (!student) return res.status(401).json({ error: 'Please log in.' });
+  req.student = student;
+  next();
+}
+
+/** Attaches registrations made before the account existed. Only call when we know the student owns the email. */
+function claimEnrollmentsByEmail(student) {
+  db.prepare('UPDATE enrollments SET student_id = ? WHERE student_id IS NULL AND email = ?').run(student.id, student.email.toLowerCase());
+}
+
+/** Only allow same-site relative paths as a post-login destination. */
+function safeNext(v) {
+  const s = String(v || '');
+  return /^\/(?![/\\])[\w\-/#?=&.]*$/.test(s) ? s : '/account';
+}
+
+app.get('/api/auth/config', (req, res) => res.json({ google: Boolean(GOOGLE) }));
+
+app.post(
+  '/api/auth/signup',
+  authLimit,
+  h((req, res) => {
+    const b = req.body || {};
+    const name = text(b.name, 100, { required: true, label: 'Name' });
+    const mail = email(b.email);
+    const pw = newPassword(b.password);
+    if (db.prepare('SELECT 1 FROM students WHERE email = ?').get(mail)) {
+      throw new HttpError(409, 'An account with that email already exists. Log in instead.');
+    }
+    const r = db.prepare('INSERT INTO students (name, email, pass_hash) VALUES (?, ?, ?)').run(name, mail, hashPassword(pw));
+    startStudentSession(req, res, Number(r.lastInsertRowid));
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  '/api/auth/login',
+  authLimit,
+  h((req, res) => {
+    const s = db.prepare('SELECT * FROM students WHERE email = ?').get(String(req.body?.email || '').trim().toLowerCase());
+    if (s && !s.pass_hash && s.google_sub) {
+      throw new HttpError(401, 'This account signs in with Google. Use "Continue with Google".');
+    }
+    if (!s || !s.pass_hash || !verifyPassword(String(req.body?.password || ''), s.pass_hash)) {
+      throw new HttpError(401, 'Wrong email or password.');
+    }
+    if (!s.active) throw new HttpError(403, 'This account has been disabled. Please contact us.');
+    startStudentSession(req, res, s.id);
+    res.json({ ok: true });
+  })
+);
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = parseCookies(req).tc_student;
+  if (token) db.prepare('DELETE FROM student_sessions WHERE token_hash = ?').run(sha256(token));
+  setCookie(res, 'tc_student', '', { maxAgeSec: 0, sameSite: 'Lax' });
+  res.json({ ok: true });
+});
+
+app.post(
+  '/api/auth/forgot',
+  authLimit,
+  h(async (req, res) => {
+    const s = db.prepare('SELECT * FROM students WHERE email = ? AND active = 1').get(email(req.body?.email));
+    if (s) {
+      const token = randomToken();
+      db.prepare('DELETE FROM password_resets WHERE student_id = ? OR expires_at < ?').run(s.id, Date.now());
+      db.prepare('INSERT INTO password_resets (token_hash, student_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), s.id, Date.now() + 3600 * 1000);
+      await sendMail({
+        to: s.email,
+        ...emails.passwordReset({ name: s.name, link: `${baseUrl(req)}/login?reset=${token}`, settings: getSettings() }),
+      });
+    }
+    // Same answer whether or not the account exists, so nobody can probe for emails.
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  '/api/auth/reset',
+  authLimit,
+  h((req, res) => {
+    const row = db
+      .prepare('SELECT * FROM password_resets WHERE token_hash = ? AND expires_at > ?')
+      .get(sha256(String(req.body?.token || '')), Date.now());
+    if (!row) throw bad('This reset link has expired or was already used. Ask for a new one.');
+    const pw = newPassword(req.body?.password);
+    tx(() => {
+      // Receiving the email proves the student owns the address.
+      db.prepare('UPDATE students SET pass_hash = ?, email_verified = 1 WHERE id = ?').run(hashPassword(pw), row.student_id);
+      db.prepare('DELETE FROM password_resets WHERE student_id = ?').run(row.student_id);
+      db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(row.student_id);
+    });
+    const s = db.prepare('SELECT * FROM students WHERE id = ?').get(row.student_id);
+    if (!s.active) throw new HttpError(403, 'This account has been disabled. Please contact us.');
+    claimEnrollmentsByEmail(s);
+    startStudentSession(req, res, s.id);
+    res.json({ ok: true });
+  })
+);
+
+// Google sign-in (OAuth 2.0 authorization code flow).
+app.get('/auth/google', (req, res) => {
+  if (!GOOGLE) return res.redirect('/login?error=google_off');
+  const state = randomToken();
+  setCookie(res, 'tc_oauth', `${state}|${safeNext(req.query.next)}`, { maxAgeSec: 600, sameSite: 'Lax' });
+  const params = new URLSearchParams({
+    client_id: GOOGLE.id,
+    redirect_uri: `${baseUrl(req)}/auth/google/callback`,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    prompt: 'select_account',
+  });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+app.get(
+  '/auth/google/callback',
+  h(async (req, res) => {
+    const [state, next] = String(parseCookies(req).tc_oauth || '').split('|');
+    setCookie(res, 'tc_oauth', '', { maxAgeSec: 0, sameSite: 'Lax' });
+    const fail = (code) => res.redirect(`/login?error=${code}`);
+    if (!GOOGLE) return fail('google_off');
+    if (!state || req.query.state !== state || !req.query.code) return fail('google_failed');
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(req.query.code),
+        client_id: GOOGLE.id,
+        client_secret: GOOGLE.secret,
+        redirect_uri: `${baseUrl(req)}/auth/google/callback`,
+        grant_type: 'authorization_code',
+      }),
+    });
+    if (!tokenRes.ok) return fail('google_failed');
+    const { access_token: accessToken } = await tokenRes.json();
+    const infoRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!infoRes.ok) return fail('google_failed');
+    const g = await infoRes.json();
+    if (!g.sub || !g.email || !g.email_verified) return fail('google_unverified');
+    const mail = String(g.email).toLowerCase();
+
+    let s = db.prepare('SELECT * FROM students WHERE google_sub = ?').get(g.sub);
+    if (!s) {
+      const existing = db.prepare('SELECT * FROM students WHERE email = ?').get(mail);
+      if (existing) {
+        // Google has proven this person owns the email. If the password account was never verified,
+        // someone else may have registered it, so drop that password and sign out its sessions.
+        tx(() => {
+          db.prepare(
+            'UPDATE students SET google_sub = ?, pass_hash = CASE WHEN email_verified = 1 THEN pass_hash ELSE NULL END, email_verified = 1 WHERE id = ?'
+          ).run(g.sub, existing.id);
+          if (!existing.email_verified) db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(existing.id);
+        });
+        s = db.prepare('SELECT * FROM students WHERE id = ?').get(existing.id);
+      } else {
+        const name = String(g.name || mail.split('@')[0]).slice(0, 100);
+        const r = db.prepare('INSERT INTO students (name, email, google_sub, email_verified) VALUES (?, ?, ?, 1)').run(name, mail, g.sub);
+        s = db.prepare('SELECT * FROM students WHERE id = ?').get(Number(r.lastInsertRowid));
+      }
+    }
+    if (!s.active) return fail('disabled');
+    claimEnrollmentsByEmail(s);
+    startStudentSession(req, res, s.id);
+    res.redirect(safeNext(next));
+  })
+);
+
+// ------------------------------- Student dashboard -------------------------
+
+function libraryModuleIds(studentId) {
+  return db
+    .prepare(
+      `SELECT DISTINCT module_id FROM enrollments
+        WHERE student_id = ? AND track = 'self' AND status = 'confirmed' AND code_used_at IS NOT NULL`
+    )
+    .all(studentId)
+    .map((r) => r.module_id);
+}
 
 app.post(
   '/api/enroll',
   enrollLimit,
+  studentAuth,
   h((req, res) => {
     const b = req.body || {};
+    const s = req.student;
     const track = String(b.track);
     if (!TRACKS.includes(track)) throw bad('Choose how you want to learn.');
-    const name = text(b.name, 100, { required: true, label: 'Name' });
-    const mail = email(b.email);
-    const tel = phone(b.phone);
+    const tel = phone(b.phone || s.phone);
     const mod = getModule(optionalId(b.module_id));
     if (!mod || !mod.active) throw bad('Choose a module.');
 
@@ -258,131 +492,124 @@ app.post(
 
     const ref = newRef();
     const amount = mod[PRICE_COL[track]];
-    db.prepare(
-      `INSERT INTO enrollments (ref, name, email, phone, track, module_id, class_id, amount)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(ref, name, mail, tel, track, mod.id, classId, amount);
+    tx(() => {
+      db.prepare(
+        `INSERT INTO enrollments (ref, name, email, phone, track, module_id, class_id, amount, student_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(ref, s.name, s.email.toLowerCase(), tel, track, mod.id, classId, amount, s.id);
+      if (tel !== s.phone) db.prepare('UPDATE students SET phone = ? WHERE id = ?').run(tel, s.id);
+    });
     res.json({ ref, amount, track, module: mod.title });
   })
 );
 
-/** Look up a registration by reference + email (used to come back and pay later). */
-app.post(
-  '/api/enroll/status',
-  enrollLimit,
+app.use('/api/me', studentAuth);
+
+app.get('/api/me', (req, res) => {
+  const s = req.student;
+  const enrollments = db
+    .prepare(
+      `SELECT e.ref, e.track, e.amount, e.status, e.mpesa_code, e.reject_reason, e.code_used_at, e.created_at,
+              m.title AS module_title, c.title AS class_title, c.starts_at, c.duration_min, c.location, c.meeting_link
+         FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
+        WHERE e.student_id = ? ORDER BY e.created_at DESC`
+    )
+    .all(s.id)
+    .map((e) => ({ ...e, meeting_link: e.status === 'confirmed' && e.track === 'live' ? e.meeting_link || '' : '' }));
+  const library = libraryModuleIds(s.id)
+    .map(getModule)
+    .filter(Boolean)
+    .sort((a, b) => a.sort - b.sort || a.id - b.id)
+    .map((m) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description,
+      videos: db.prepare('SELECT id, title FROM videos WHERE module_id = ? ORDER BY sort, id').all(m.id),
+    }));
+  const st = getSettings();
+  res.json({
+    student: { name: s.name, email: s.email, phone: s.phone, google: Boolean(s.google_sub), has_password: Boolean(s.pass_hash) },
+    enrollments,
+    library,
+    max_devices: MAX_STUDENT_DEVICES,
+    payment: { method: st.mpesa_method, number: st.mpesa_number, account_name: st.mpesa_account_name },
+  });
+});
+
+app.put(
+  '/api/me',
   h((req, res) => {
-    const ref = text(req.body?.ref, 20).toUpperCase();
-    const e = db
-      .prepare(
-        `SELECT e.ref, e.status, e.amount, e.track, e.reject_reason, m.title AS module
-           FROM enrollments e JOIN modules m ON m.id = e.module_id
-          WHERE e.ref = ? AND e.email = ?`
-      )
-      .get(ref, email(req.body?.email));
-    if (!e) throw new HttpError(404, 'No registration matches that reference and email.');
-    res.json(e);
+    const name = text(req.body?.name, 100, { required: true, label: 'Name' });
+    const tel = req.body?.phone ? phone(req.body.phone) : '';
+    db.prepare('UPDATE students SET name = ?, phone = ? WHERE id = ?').run(name, tel, req.student.id);
+    res.json({ ok: true });
   })
 );
 
 app.post(
-  '/api/enroll/payment',
+  '/api/me/password',
+  h((req, res) => {
+    const s = req.student;
+    if (s.pass_hash && !verifyPassword(String(req.body?.current || ''), s.pass_hash)) throw bad('Current password is wrong.');
+    const pw = newPassword(req.body?.next);
+    db.prepare('UPDATE students SET pass_hash = ? WHERE id = ?').run(hashPassword(pw), s.id);
+    db.prepare('DELETE FROM student_sessions WHERE student_id = ? AND token_hash != ?').run(s.id, sha256(parseCookies(req).tc_student));
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  '/api/me/enrollments/:ref/payment',
   enrollLimit,
   h(async (req, res) => {
-    const ref = text(req.body?.ref, 20).toUpperCase();
-    const mail = email(req.body?.email);
     const code = normalizeCode(req.body?.mpesa_code);
     if (!/^[A-Z0-9]{10}$/.test(code)) throw bad('An M-PESA code is 10 letters and numbers, e.g. SJK4H7Q2LM.');
-
-    const e = db.prepare('SELECT * FROM enrollments WHERE ref = ? AND email = ?').get(ref, mail);
-    if (!e) throw new HttpError(404, 'No registration matches that reference and email.');
-    if (e.status === 'confirmed') throw bad('This payment is already confirmed. Check your email for your code.');
-    const dup = db.prepare('SELECT 1 FROM enrollments WHERE mpesa_code = ? AND id != ?').get(code, e.id);
-    if (dup) throw new HttpError(409, 'That M-PESA code has already been used for another registration.');
-
+    const e = db.prepare('SELECT * FROM enrollments WHERE ref = ? AND student_id = ?').get(String(req.params.ref).toUpperCase(), req.student.id);
+    if (!e) throw new HttpError(404, 'Registration not found.');
+    if (e.status === 'confirmed') throw bad('This payment is already confirmed.');
+    if (db.prepare('SELECT 1 FROM enrollments WHERE mpesa_code = ? AND id != ?').get(code, e.id)) {
+      throw new HttpError(409, 'That M-PESA code has already been used for another registration.');
+    }
     db.prepare("UPDATE enrollments SET mpesa_code = ?, paid_at = ?, status = 'pending_review', reject_reason = NULL WHERE id = ?").run(
       code,
       nowIso(),
       e.id
     );
-
-    const s = getSettings();
-    if (s.notify_email) {
+    const st = getSettings();
+    if (st.notify_email) {
       const msg = emails.paymentToReview({
         enrollment: { ...e, mpesa_code: code },
         module: getModule(e.module_id),
         baseUrl: baseUrl(req),
         staffPath: STAFF_PATH,
       });
-      sendMail({ to: s.notify_email, ...msg });
+      sendMail({ to: st.notify_email, ...msg });
     }
-    res.json({ ok: true, status: 'pending_review' });
+    res.json({ ok: true });
   })
 );
 
-// ------------------------------- Learners ----------------------------------
-
-function viewerToken(req) {
-  return parseCookies(req).tc_view || null;
-}
-
 app.post(
-  '/api/learn/redeem',
+  '/api/me/redeem',
   rateLimit(10, 15 * 60 * 1000),
   h((req, res) => {
     const code = normalizeCode(req.body?.code);
     if (code.length !== 8) throw bad('Codes are 8 characters, like ABCD-2345.');
     const e = db.prepare("SELECT * FROM enrollments WHERE code_hash = ? AND status = 'confirmed'").get(sha256(code));
     if (!e) throw bad('That code is not valid.');
-    if (e.track !== 'self') {
-      throw bad('That code is your ticket for a class, not for videos. Keep it and show it to your teacher.');
-    }
+    if (e.track !== 'self') throw bad('That code is your ticket for a class, not for videos. Keep it and show it to your teacher.');
+    if (e.student_id && e.student_id !== req.student.id) throw bad('That code belongs to another account.');
     if (e.code_used_at) throw bad('That code has already been used. Contact us if you need a new one.');
-
-    const token = viewerToken(req) || randomToken();
-    tx(() => {
-      db.prepare('UPDATE enrollments SET code_used_at = ? WHERE id = ?').run(nowIso(), e.id);
-      db.prepare('INSERT OR IGNORE INTO viewer_access (token_hash, enrollment_id) VALUES (?, ?)').run(sha256(token), e.id);
-    });
-    setCookie(res, 'tc_view', token, { maxAgeSec: VIEWER_COOKIE_SEC, sameSite: 'Lax' });
+    db.prepare('UPDATE enrollments SET code_used_at = ?, student_id = ? WHERE id = ?').run(nowIso(), req.student.id, e.id);
     res.json({ ok: true, module: getModule(e.module_id).title });
   })
 );
 
-function viewerModuleIds(req) {
-  const token = viewerToken(req);
-  if (!token) return [];
-  return db
-    .prepare(
-      `SELECT DISTINCT e.module_id FROM viewer_access va JOIN enrollments e ON e.id = va.enrollment_id
-        WHERE va.token_hash = ? AND e.status = 'confirmed'`
-    )
-    .all(sha256(token))
-    .map((r) => r.module_id);
-}
-
 app.get(
-  '/api/learn/me',
-  h((req, res) => {
-    const ids = viewerModuleIds(req);
-    const modules = ids
-      .map(getModule)
-      .filter(Boolean)
-      .sort((a, b) => a.sort - b.sort || a.id - b.id)
-      .map((m) => ({
-        id: m.id,
-        title: m.title,
-        description: m.description,
-        videos: db.prepare('SELECT id, title FROM videos WHERE module_id = ? ORDER BY sort, id').all(m.id),
-      }));
-    res.json({ modules });
-  })
-);
-
-app.get(
-  '/api/learn/video/:id',
+  '/api/me/video/:id',
   h((req, res) => {
     const video = db.prepare('SELECT * FROM videos WHERE id = ?').get(optionalId(req.params.id));
-    if (!video || !viewerModuleIds(req).includes(video.module_id)) {
+    if (!video || !libraryModuleIds(req.student.id).includes(video.module_id)) {
       throw new HttpError(403, 'You do not have access to this video.');
     }
     streamVideo(req, res, video);
@@ -648,7 +875,7 @@ app.get('/api/admin/enrollments', (req, res) => {
   res.json({ rows, counts });
 });
 
-/** Issue (or reissue) a one-time code and email it. Reissuing revokes previous device access. */
+/** Issue (or reissue) a one-time code and email it. Reissuing invalidates the previous code. */
 async function issueCode(req, e) {
   const code = newAccessCode();
   tx(() => {
@@ -656,7 +883,6 @@ async function issueCode(req, e) {
       `UPDATE enrollments SET status = 'confirmed', code_hash = ?, code_used_at = NULL, reject_reason = NULL,
               confirmed_at = COALESCE(confirmed_at, ?), confirmed_by = COALESCE(confirmed_by, ?) WHERE id = ?`
     ).run(code.hash, nowIso(), req.staff.id, e.id);
-    db.prepare('DELETE FROM viewer_access WHERE enrollment_id = ?').run(e.id);
   });
   const cls = getClass(e.class_id);
   const msg = emails.confirmation({
@@ -700,10 +926,7 @@ app.post(
     const e = getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
     const reason = text(req.body?.reason, 300);
-    tx(() => {
-      db.prepare("UPDATE enrollments SET status = 'rejected', reject_reason = ?, code_hash = NULL WHERE id = ?").run(reason || null, e.id);
-      db.prepare('DELETE FROM viewer_access WHERE enrollment_id = ?').run(e.id);
-    });
+    db.prepare("UPDATE enrollments SET status = 'rejected', reject_reason = ?, code_hash = NULL WHERE id = ?").run(reason || null, e.id);
     if (req.body?.notify !== false) {
       await sendMail({
         to: e.email,
@@ -961,6 +1184,43 @@ app.get('/api/admin/outbox', (req, res) => {
   res.json(db.prepare('SELECT * FROM outbox ORDER BY id DESC LIMIT 100').all());
 });
 
+app.get('/api/admin/students', (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT s.id, s.name, s.email, s.phone, s.active, s.created_at, s.last_login_at,
+                s.google_sub IS NOT NULL AS google, s.pass_hash IS NOT NULL AS has_password,
+                (SELECT COUNT(*) FROM enrollments e WHERE e.student_id = s.id) AS registrations,
+                (SELECT COUNT(*) FROM enrollments e WHERE e.student_id = s.id AND e.status = 'confirmed') AS paid,
+                (SELECT COUNT(*) FROM student_sessions ss WHERE ss.student_id = s.id AND ss.expires_at > ?) AS devices
+           FROM students s ORDER BY s.created_at DESC LIMIT 500`
+      )
+      .all(Date.now())
+  );
+});
+
+app.put(
+  '/api/admin/students/:id',
+  h((req, res) => {
+    const s = db.prepare('SELECT * FROM students WHERE id = ?').get(optionalId(req.params.id));
+    if (!s) throw new HttpError(404, 'Student not found.');
+    const active = req.body?.active ? 1 : 0;
+    tx(() => {
+      db.prepare('UPDATE students SET active = ? WHERE id = ?').run(active, s.id);
+      if (!active) db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(s.id);
+    });
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  '/api/admin/students/:id/signout',
+  h((req, res) => {
+    const r = db.prepare('DELETE FROM student_sessions WHERE student_id = ?').run(optionalId(req.params.id));
+    res.json({ signed_out: r.changes });
+  })
+);
+
 // ------------------------------- Pages -------------------------------------
 
 const staffPage = fs.readFileSync(path.join(__dirname, 'private', 'staff.html'), 'utf8').replaceAll('{{STAFF_PATH}}', STAFF_PATH);
@@ -969,6 +1229,7 @@ app.get(STAFF_PATH, (req, res) => {
   res.type('html').send(staffPage);
 });
 app.get(`${STAFF_PATH}/staff.js`, (req, res) => res.sendFile(path.join(__dirname, 'private', 'staff.js')));
+app.get('/learn', (req, res) => res.redirect(301, '/account'));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));

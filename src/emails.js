@@ -31,11 +31,10 @@ function confirmation({ enrollment: e, module: m, cls, code, settings: s, baseUr
   if (e.track === 'self') {
     lines.push(
       'To start watching:',
-      `  1. Open ${baseUrl}/learn on the phone or computer you will study on.`,
-      '  2. Enter the code above.',
+      `  1. Log in to your dashboard at ${baseUrl}/account`,
+      '  2. Enter the code above under "Unlock a course".',
       '',
-      'The code works once and unlocks the videos on that one device. Please do not share it —',
-      'if you change devices, contact us and we will issue a new code.'
+      'The code works once and adds the videos to your account. Please do not share it.'
     );
   } else {
     lines.push(`Class: ${cls ? cls.title : m.title}`, `When:  ${formatWhen(cls && cls.starts_at, cls && cls.duration_min)}`);
@@ -58,7 +57,7 @@ function rejection({ enrollment: e, module: m, reason, settings: s, baseUrl }) {
     `We could not confirm your payment for ${m.title} (reference ${e.ref}).`,
     reason ? `Reason: ${reason}` : '',
     '',
-    `If you think this is a mistake, reply to this email or resubmit your M-PESA code at ${baseUrl}/#resume.`,
+    `If you think this is a mistake, reply to this email or resubmit your M-PESA code from your dashboard at ${baseUrl}/account.`,
   ]
     .filter((l, i, a) => l !== '' || a[i - 1] !== '')
     .join('\n');
@@ -97,4 +96,17 @@ function paymentToReview({ enrollment: e, module: m, baseUrl, staffPath }) {
   };
 }
 
-module.exports = { TRACK_LABEL, formatWhen, confirmation, rejection, meetingLink, classMessage, paymentToReview };
+function passwordReset({ name, link, settings: s }) {
+  const text = [
+    `Hi ${name},`,
+    '',
+    'Someone asked to reset the password for your account. If it was you, open this link within 1 hour:',
+    '',
+    link,
+    '',
+    'If you did not ask for this, ignore this email — your password will not change.',
+  ].join('\n');
+  return { subject: `Reset your ${s.school_name} password`, text: text + signoff(s) };
+}
+
+module.exports = { passwordReset, TRACK_LABEL, formatWhen, confirmation, rejection, meetingLink, classMessage, paymentToReview };

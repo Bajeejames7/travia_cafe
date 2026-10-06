@@ -55,7 +55,7 @@ section.wrap { padding-top: 56px; padding-bottom: 8px; scroll-margin-top: 64px; 
 .topbar nav a:hover { color: var(--text); }
 .topbar nav a.btn { color: var(--accent-ink); }
 .topbar nav a.btn.ghost { color: var(--text); }
-@media (max-width: 720px) { .topbar nav a:not(.btn) { display: none; } }
+@media (max-width: 720px) { .topbar nav a:not(.btn), .topbar nav .hide-sm { display: none; } }
 
 /* Hero */
 .hero { padding-top: 72px; padding-bottom: 24px; }
@@ -172,3 +172,22 @@ details.panel summary { cursor: pointer; font-weight: 600; }
 details.panel[open] summary { margin-bottom: 14px; }
 .code-out { font-family: var(--mono); font-size: 1.4rem; letter-spacing: .1em; color: var(--accent); }
 pre.mail { white-space: pre-wrap; font-family: var(--mono); font-size: .85rem; background: var(--bg-2); padding: 12px; border-radius: 10px; margin: 8px 0 0; }
+
+/* Student auth & dashboard */
+.auth-card { max-width: 440px; margin: 56px auto; }
+.auth-card .tabs { margin-top: 0; }
+.auth-card h2 { font-size: 1.3rem; }
+.btn.wide { width: 100%; }
+.btn.google { width: 100%; background: #fff; color: #1f1f1f; border-color: #dadce0; margin-bottom: 4px; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .85rem; margin: 16px 0; }
+.divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.gate { padding: 14px 16px; border: 1px dashed var(--accent); border-radius: 12px; margin-bottom: 18px; }
+.gate p { margin-bottom: 12px; }
+.dash-hero { padding-top: 40px; padding-bottom: 0; }
+.narrow { max-width: 560px; }
+.grow { flex: 1; min-width: 160px; width: auto; }
+.m0 { margin: 0; }
+.m-top { margin-top: 10px; }
+.pad { padding: 0 16px 12px; }
+.pay-box { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.pay-box summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-bottom: 10px; }

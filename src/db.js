@@ -95,12 +95,31 @@ CREATE TABLE IF NOT EXISTS enrollments (
 CREATE INDEX IF NOT EXISTS enrollments_status ON enrollments(status);
 CREATE INDEX IF NOT EXISTS enrollments_class ON enrollments(class_id);
 
--- Devices that redeemed a self-paced code. Reissuing a code wipes these.
-CREATE TABLE IF NOT EXISTS viewer_access (
-  token_hash    TEXT NOT NULL,
-  enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
-  created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (token_hash, enrollment_id)
+CREATE TABLE IF NOT EXISTS students (
+  id             INTEGER PRIMARY KEY,
+  name           TEXT NOT NULL,
+  email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  phone          TEXT NOT NULL DEFAULT '',
+  pass_hash      TEXT,                   -- NULL for Google-only accounts
+  google_sub     TEXT UNIQUE,
+  email_verified INTEGER NOT NULL DEFAULT 0,
+  active         INTEGER NOT NULL DEFAULT 1,
+  created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_login_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS student_sessions (
+  token_hash TEXT PRIMARY KEY,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  user_agent TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS outbox (
@@ -113,6 +132,13 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `);
+
+// Migrations for databases created before student accounts existed.
+const enrollmentCols = db.prepare('PRAGMA table_info(enrollments)').all().map((c) => c.name);
+if (!enrollmentCols.includes('student_id')) {
+  db.exec('ALTER TABLE enrollments ADD COLUMN student_id INTEGER REFERENCES students(id) ON DELETE SET NULL');
+}
+db.exec('CREATE INDEX IF NOT EXISTS enrollments_student ON enrollments(student_id); DROP TABLE IF EXISTS viewer_access;');
 
 const DEFAULT_SETTINGS = {
   school_name: 'Travia Cafe',

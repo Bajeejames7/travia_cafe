@@ -7,30 +7,49 @@ one-time code by email. Videos, payments and settings sit behind a staff login a
 
 | Track | Who it's for | Default price | What the one-time code does |
 |---|---|---|---|
-| **Self-paced** | Students who prefer prerecorded videos | KSh 1,000 per module | Unlocks that module's videos on **one** device at `/learn` |
+| **Self-paced** | Students who prefer prerecorded videos | KSh 1,000 per module | Unlocks that module's videos in the student's account |
 | **Live online** | Students who want a teacher but are far away or busy | KSh 1,000 per session | Class ticket; the meeting link is emailed after payment |
 | **In person** | Students who prefer physical classes | KSh 2,500 per session | Class ticket the teacher checks in at the door |
 
 All prices are editable in **Modules & prices**. There are defaults for new modules, and each module has its own three prices.
 A registration keeps the price it was quoted, even if you change prices later.
 
+## Student accounts and dashboard
+
+Students create an account (email + password, or **Continue with Google**) before enrolling. Their dashboard at `/account` has:
+
+- **My courses**: unlocked video modules with a player, and a box to enter unlock codes.
+- **Classes**: booked live and in-person classes, with a **Join class** button once paid and the teacher has added a link.
+- **Payments**: every registration, its status, M-PESA instructions and a box to submit the M-PESA code.
+- **Profile**: name, phone, password (Google users can add one).
+
+An account can be signed in on at most `MAX_STUDENT_DEVICES` devices at once (default 2). Signing in on another
+device signs out the oldest, which makes sharing one account with friends impractical. Forgotten passwords are reset
+by an emailed link that expires after one hour.
+
+To turn on Google sign-in, create an OAuth client in Google Cloud Console (Web application, redirect URI
+`<PUBLIC_URL>/auth/google/callback`) and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. If someone signs in with
+Google using the email of an existing unverified password account, the accounts are merged and the old password is
+removed, so nobody can claim another person's email in advance.
+
 ## How a registration flows
 
-1. The student picks a track, a module and (for live or in-person) a class date, then fills in name, email and M-PESA number.
-2. The site shows a reference (e.g. `TC7KQ2MA`) and step-by-step M-PESA instructions for your Till, Paybill or phone number.
+1. The logged-in student picks a track, a module and (for live or in-person) a class date.
+2. The dashboard shows a reference (e.g. `TC7KQ2MA`) and step-by-step M-PESA instructions for your Till, Paybill or phone number.
 3. The student pays and pastes the M-PESA transaction code. Each M-PESA code can only be used once.
 4. You get an email (if `notify_email` is set). In **Payments**, check the code against the SMS on the business phone, then
    click **Confirm**.
 5. The student is emailed their one-time code:
-   - **Self-paced:** they enter it at `/learn`. It works once, so a shared code is useless to anyone else. If they change
-     phones, click **New code**: the old code and the old device both stop working.
+   - **Self-paced:** they enter it on their dashboard. It works once and ties the module to their account, so a shared
+     code is useless to anyone else.
    - **Live:** the email includes the meeting link if the class already has one. Otherwise the teacher clicks **Send link to new
      students** on the class.
    - **In person:** the teacher types the code into **Check-in** when the student arrives. Each code checks in once.
 
 ## Staff roles
 
-- **Admin**: everything, including payments, prices, videos, settings, staff accounts and the email log.
+- **Admin**: everything, including payments, prices, videos, settings, staff accounts, student accounts (disable, sign out
+  devices) and the email log.
 - **Teacher**: schedules classes, adds meeting links, emails links and messages to paid students, and checks students in.
   Teachers cannot see payments, prices or videos.
 
@@ -70,6 +89,6 @@ Back up `DATA_DIR/travia.db` regularly. That file contains all registrations and
 - Staff passwords are hashed with scrypt. Login and code entry are rate-limited per IP.
 - One-time codes are stored only as hashes, so a leaked database cannot be used to unlock videos. The Emails tab does keep a
   copy of what was sent.
-- Videos are streamed only to devices holding a valid access cookie and are never in a public folder. Nothing on the web can
+- Videos are streamed only to signed-in students who have unlocked that module and are never in a public folder. Nothing on the web can
   stop someone from screen-recording a video, but there is no download link, and shared codes do not work.
 - Meeting links are never shown on the public site. They only go out by email to confirmed students.

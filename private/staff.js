@@ -42,6 +42,7 @@ async function act(button, fn) {
 // ---------------------------------------------------------------------------
 const TABS = [
   { id: 'payments', label: 'Payments', admin: true, render: renderPayments },
+  { id: 'students', label: 'Students', admin: true, render: renderStudents },
   { id: 'classes', label: 'Classes', render: renderClasses },
   { id: 'checkin', label: 'Check-in', render: renderCheckin },
   { id: 'modules', label: 'Modules & prices', admin: true, render: renderModules },
@@ -199,6 +200,56 @@ function paymentRow(r, classes) {
     <td>${statusTag(r.status)}${used}${r.reject_reason ? `<div class="muted small">${esc(r.reject_reason)}</div>` : ''}</td>
     <td><div class="actions">${actions.join('')}</div></td>
   </tr>`;
+}
+
+// ---------------------------------------------------------------------------
+// Students
+// ---------------------------------------------------------------------------
+async function renderStudents() {
+  const rows = await api('/api/admin/students');
+  view.innerHTML = `
+    <p class="muted small">${rows.length} student account(s). Disabling an account signs it out everywhere and blocks logging in.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Student</th><th>Sign-in</th><th class="num">Registrations</th><th>Last login</th><th>Status</th><th></th></tr></thead>
+      <tbody>${
+        rows.length
+          ? rows
+              .map(
+                (r) => `<tr data-student="${r.id}">
+          <td><strong>${esc(r.name)}</strong><div class="muted small">${esc(r.email)}${r.phone ? `<br>${esc(r.phone)}` : ''}</div></td>
+          <td class="small">${[r.google ? 'Google' : '', r.has_password ? 'Password' : ''].filter(Boolean).join(' + ')}<div class="muted">${r.devices} device(s) signed in</div></td>
+          <td class="num">${r.paid} paid / ${r.registrations}</td>
+          <td class="small">${esc(fmtStamp(r.last_login_at)) || '—'}<div class="muted">joined ${esc(fmtStamp(r.created_at))}</div></td>
+          <td>${r.active ? '<span class="tag ok">active</span>' : '<span class="tag bad">disabled</span>'}</td>
+          <td><div class="actions">
+            <button class="btn small ghost" data-signout>Sign out devices</button>
+            <button class="btn small ${r.active ? 'danger' : ''}" data-toggle="${r.active ? 0 : 1}">${r.active ? 'Disable' : 'Enable'}</button>
+          </div></td>
+        </tr>`
+              )
+              .join('')
+          : '<tr><td colspan="6" class="muted">No students have signed up yet.</td></tr>'
+      }</tbody>
+    </table></div>`;
+  view.querySelectorAll('tr[data-student]').forEach((tr) => {
+    const id = tr.dataset.student;
+    tr.querySelector('[data-signout]').addEventListener('click', (e) =>
+      act(e.target, async () => {
+        const r = await api(`/api/admin/students/${id}/signout`, { method: 'POST' });
+        await renderStudents();
+        flash('ok', `Signed out ${r.signed_out} device(s).`);
+      })
+    );
+    tr.querySelector('[data-toggle]').addEventListener('click', (e) => {
+      const active = e.target.dataset.toggle === '1';
+      if (!active && !confirm('Disable this student? They will be signed out and cannot log in until you enable them again.')) return;
+      act(e.target, async () => {
+        await api(`/api/admin/students/${id}`, { method: 'PUT', body: { active } });
+        await renderStudents();
+        flash('ok', active ? 'Student enabled.' : 'Student disabled and signed out.');
+      });
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------

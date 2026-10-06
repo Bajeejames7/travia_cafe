@@ -17,8 +17,7 @@
         <a href="#tracks">Ways to learn</a>
         <a href="#modules">Prices</a>
         <a href="#pay">How to pay</a>
-        <a href="#resume">Already registered?</a>
-        <a class="btn small ghost" href="/learn">My videos</a>
+        <a class="btn small ghost" id="authLink" href="/login?next=/account">Log in</a>
         <a class="btn small" href="#enroll">Enrol</a>
       </nav>
     </div>
@@ -93,7 +92,15 @@
     <section id="enroll" class="wrap">
       <h2>Enrol</h2>
       <div class="panel">
+        <div id="enrollGate" class="gate" hidden>
+          <p><strong>Create a free account to enrol.</strong> Your dashboard keeps your videos, class links and payments in one place.</p>
+          <div class="row">
+            <a class="btn" href="/login?mode=signup&amp;next=/%23enroll">Create account</a>
+            <a class="btn ghost" href="/login?next=/%23enroll">Log in</a>
+          </div>
+        </div>
         <form id="enrollForm" novalidate>
+          <p class="muted small" id="enrollAs"></p>
           <div class="seg" role="radiogroup" aria-label="How do you want to learn?">
             <input type="radio" name="track" id="t-self" value="self" checked>
             <label for="t-self"><strong>Self-paced</strong><span>Prerecorded videos</span></label>
@@ -111,8 +118,6 @@
             </label>
           </div>
           <div class="field-row">
-            <label>Full name <input name="name" autocomplete="name" required maxlength="100"></label>
-            <label>Email <input name="email" type="email" autocomplete="email" required maxlength="200"></label>
             <label>M-PESA phone number <input name="phone" type="tel" autocomplete="tel" placeholder="0712 345 678" required></label>
           </div>
           <div class="row">
@@ -121,28 +126,6 @@
           <div id="enrollMsg"></div>
         </form>
 
-        <div id="payStep" hidden>
-          <p class="muted">Registration saved. Your reference:</p>
-          <p class="big-ref" id="payRef"></p>
-          <p>Pay <strong>KSh <span id="payAmount"></span></strong> with M-PESA:</p>
-          <ol class="steps" id="payStepList"></ol>
-          <form id="payForm" novalidate>
-            <label>M-PESA transaction code (from the confirmation SMS)
-              <input name="mpesa_code" class="mono" placeholder="e.g. SJK4H7Q2LM" maxlength="12" autocapitalize="characters" required>
-            </label>
-            <button class="btn" type="submit">Submit payment</button>
-            <div id="payMsg"></div>
-          </form>
-        </div>
-
-        <div id="doneStep" hidden>
-          <div class="notice ok">
-            <strong>Thank you — payment submitted.</strong>
-            <p class="muted" style="margin:6px 0 0">We will check it against our M-PESA records and email your one-time code to
-              <strong id="doneEmail"></strong>. This is usually quick during working hours. Keep your reference
-              <span class="mono" id="doneRef"></span> in case you need to contact us.</p>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -155,20 +138,6 @@
       </div>
     </section>
 
-    <section id="resume" class="wrap">
-      <h2>Already registered?</h2>
-      <p class="muted">Paid but closed the page, or need to resend your M-PESA code? Look up your registration.</p>
-      <div class="panel">
-        <form id="lookupForm" novalidate>
-          <div class="field-row">
-            <label>Reference <input name="ref" class="mono" placeholder="TCXXXXXX" autocapitalize="characters" required></label>
-            <label>Email used to register <input name="email" type="email" required></label>
-          </div>
-          <button class="btn ghost" type="submit">Look up</button>
-        </form>
-        <div id="lookupResult"></div>
-      </div>
-    </section>
   </main>
 
   <footer>
