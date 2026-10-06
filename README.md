@@ -3,6 +3,79 @@
 An online storefront for a cybersecurity school. Students choose how they want to learn, pay with M-PESA, and receive a
 one-time code by email. Videos, payments and settings sit behind a staff login at a secret address.
 
+## Try the demo on your computer
+
+### 1. Install
+
+You need **Node.js 22.13 or newer** (check with `node -v`; download from [nodejs.org](https://nodejs.org)) and Git.
+
+```bash
+git clone https://github.com/Bajeejames7/travia_cafe.git
+cd travia_cafe
+npm install
+```
+
+### 2. Add the `.env` file
+
+Put the `.env` file you were sent into the `travia_cafe` folder. It holds the demo logins and settings.
+No file? Copy `.env.example` to `.env` and set at least `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
+
+No database setup is needed: without `DATABASE_URL` the app keeps its data in a local file in the `data` folder.
+
+### 3. Load the demo data and start
+
+```bash
+npm run seed     # once: modules, sample videos, classes, a teacher and students
+npm start
+```
+
+`npm run seed` ends by printing the logins and links. Leave `npm start` running and open the links in your browser.
+
+### 4. Log in
+
+| Who | Where | Email | Password |
+|---|---|---|---|
+| Admin | `http://localhost:3000/<STAFF_PATH>` | `ADMIN_EMAIL` in `.env` | `ADMIN_PASSWORD` in `.env` |
+| Teacher | same staff page | `teacher@travia.test` | `DEMO_TEACHER_PASSWORD` in `.env` |
+| Student | `http://localhost:3000/login` | `amina@student.test` | `DEMO_STUDENT_PASSWORD` in `.env` |
+
+`<STAFF_PATH>` is the `STAFF_PATH` value in `.env`; the seed prints the full link. If a demo password is not set
+in `.env`, the seed makes one up and prints it. Use separate browser windows (or log out) to switch between people.
+
+### 5. Things to try
+
+**As a new visitor**
+1. Open `http://localhost:3000`, pick *Live online*, a module and a class date, and click **Create account to enrol**.
+2. Sign up with any made-up email. You come back to the form with your choices kept; click **Continue to payment**.
+3. On your dashboard's **Payments** tab, enter any 10-character M-PESA code (e.g. `ABC1234567`).
+
+**As the admin**
+1. **Payments → To review**: confirm *Brian* (or your new student). The one-time code appears on screen, because
+   email is not set up in the demo. Every email the system would send is listed under **Emails**.
+2. **Modules & prices**: change a price, then refresh the home page to see it.
+3. **Videos**: upload a short video to a module. **Students**: see accounts and sign a student out.
+
+**As the teacher**
+1. **Classes**: schedule a class, open **Students** on a class, use **Send link** for live classes.
+2. **Check-in**: enter Cynthia's class ticket, which `npm run seed` printed. Entering it a second time is refused.
+
+**As the student (Amina)**
+1. **My courses**: watch the unlocked videos.
+2. **Classes**: the paid live class has a **Join class** button.
+3. **Payments**: one module is still waiting for payment.
+4. To unlock another course, have the admin confirm a self-paced payment and enter the code under **Unlock a course**.
+
+Demo students: **Amina** (logs in; videos unlocked, a paid live class, one unpaid module), **Brian** (paid, waiting
+for confirmation), **Cynthia** (confirmed for the in-person lab), **David** (registered, not paid).
+
+### Start over or fix problems
+
+- **Reset the demo:** stop the server (Ctrl+C), delete the `data` folder, run `npm run seed` and `npm start` again.
+- **Logins don't work:** the `.env` may be older than the demo data. Get the latest `.env`, then reset the demo.
+- **"Port 3000 is in use":** another app is running there. Close it or set `PORT=3001` in `.env`.
+- **`node:sqlite` error:** your Node.js is too old; install version 22.13 or newer.
+- **Browser tab shows another site's icon:** clear the browser's cached images (Ctrl+Shift+Delete).
+
 ## The three ways to learn
 
 | Track | Who it's for | Default price | What the one-time code does |
@@ -52,30 +125,6 @@ removed, so nobody can claim another person's email in advance.
   devices) and the email log.
 - **Teacher**: schedules classes, adds meeting links, emails links and messages to paid students, and checks students in.
   Teachers cannot see payments, prices or videos.
-
-## Running a local preview
-
-Requires **Node.js 22.13 or newer** (`node -v`). Without `DATABASE_URL` the app uses a local SQLite file, so there
-is no database to install.
-
-```bash
-git clone https://github.com/Bajeejames7/travia_cafe.git
-cd travia_cafe
-npm install
-# put the .env file you were given in this folder (or copy .env.example to .env and fill it in)
-npm run seed     # loads demo modules, videos, classes, a teacher and students
-npm start
-```
-
-`npm run seed` prints the logins and the staff dashboard address. It only runs on an empty database; to start over,
-stop the server and delete the `data` folder.
-
-The demo contains students in every state, so you can try each flow:
-
-- **Amina** (the demo student login): videos unlocked, a paid live class with a Join button, one module still to pay for.
-- **Brian**: paid and waiting for an admin to confirm (Payments → To review).
-- **Cynthia**: confirmed for the in-person lab; the seed prints her ticket code to try teacher Check-in.
-- **David**: registered but not paid.
 
 ## Email
 
