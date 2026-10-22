@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { db, init, VIDEO_DIR, getSettings, setSettings } = require('./src/db');
+const storage = require('./src/storage');
 const { ensureAdmin } = require('./src/admin');
 const { sendMail, mailConfigured } = require('./src/mail');
 const emails = require('./src/emails');
@@ -137,11 +138,18 @@ async function seatsTaken(classId) {
 }
 
 function deleteVideoFile(filename) {
-  fs.rm(path.join(VIDEO_DIR, path.basename(filename)), { force: true }, () => {});
+  storage.remove(filename).catch((err) => console.error(`[storage] could not delete ${filename}: ${err.message}`));
 }
 
-/** Streams a video with HTTP Range support so the player can seek. */
+/**
+ * Plays a video the caller is allowed to see. From bucket storage, the player is redirected to a link that expires;
+ * from local disk, the file is streamed with HTTP Range support so the player can seek.
+ */
 function streamVideo(req, res, video) {
+  if (storage.kind === 's3') {
+    res.set('Cache-Control', 'private, no-store');
+    return res.redirect(302, storage.signedUrl(video.filename));
+  }
   const file = path.join(VIDEO_DIR, path.basename(video.filename));
   let stat;
   try {
@@ -183,7 +191,7 @@ function streamVideo(req, res, video) {
 const app = express();
 app.disable('x-powered-by');
 if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
-app.use(securityHeaders);
+app.use(securityHeaders({ mediaOrigin: storage.mediaOrigin }));
 app.use(express.json({ limit: '100kb' }));
 app.use('/api', requireAppHeader);
 
@@ -1265,7 +1273,7 @@ app.post(
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: VIDEO_DIR,
+    destination: storage.uploadDir,
     filename: (req, file, cb) => cb(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase().slice(0, 8)}`),
   }),
   limits: { fileSize: MAX_VIDEO_MB * 1024 * 1024, files: 1 },
@@ -1287,6 +1295,7 @@ app.post(
     try {
       const mod = await getModule(optionalId(req.body.module_id));
       if (!mod) throw bad('Choose a module.');
+      await storage.save(req.file);
       const title = text(req.body.title, 200) || path.parse(req.file.originalname).name;
       const { n: sort } = await db.get('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM videos WHERE module_id = ?', mod.id);
       const r = await db.get(
@@ -1300,6 +1309,7 @@ app.post(
       );
       res.json({ id: r.id });
     } catch (err) {
+      fs.rm(req.file.path, { force: true }, () => {});
       deleteVideoFile(req.file.filename);
       throw err;
     }
@@ -1509,9 +1519,13 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`Travia Cafe running on http://localhost:${PORT} (database: ${db.kind})`);
     console.log(`Staff dashboard: http://localhost:${PORT}${STAFF_PATH}`);
-    if (!mailConfigured) console.log('SMTP is not configured: emails are logged to the console and the dashboard outbox.');
+    if (!mailConfigured) console.log('Email is not configured (BREVO_API_KEY or SMTP_HOST): emails are logged to the console and the dashboard outbox.');
     if (!modules && process.env.NODE_ENV !== 'production') console.log('No modules yet. Run `npm run seed` to load demo data.');
     console.log(`M-PESA prompt (PayHero): ${payhero.enabled ? 'on' : 'off. Set PAYHERO_AUTH and PAYHERO_CHANNEL_ID to turn it on'}`);
+    console.log(`Videos: ${storage.kind === 's3' ? `bucket storage (${storage.mediaOrigin})` : `local disk (${VIDEO_DIR})`}`);
+    if (storage.kind === 'disk' && process.env.NODE_ENV === 'production') {
+      console.warn('Videos are on local disk. On a host without a persistent disk (e.g. Render free) they are lost on restart: set S3_BUCKET.');
+    }
   });
   setInterval(() => sweepPrompts().catch((err) => console.error('[payhero] sweep failed:', err.message)), 60 * 1000).unref();
 }

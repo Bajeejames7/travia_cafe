@@ -132,52 +132,84 @@ removed, so nobody can claim another person's email in advance.
 
 ## Email
 
-Set the `SMTP_*` variables (Gmail with an App Password, Zoho, Brevo, etc.). Until SMTP is configured, nothing is lost: every
-email, including codes, is saved in the **Emails** tab, and the code is shown on screen when you confirm a payment, so you can
-send it by SMS or WhatsApp.
+Set `BREVO_API_KEY` (Brevo's free plan, which also works on Render's free plan) or the `SMTP_*` variables (Gmail with an
+App Password, Zoho, etc., on hosts that allow SMTP). Until email is configured, nothing is lost: every email, including
+codes, is saved in the **Emails** tab, and the code is shown on screen when you confirm a payment, so you can send it by
+SMS or WhatsApp.
 
-## Going live (Render + Aiven + PayHero + traviacafe.com)
+## Going live, for free
 
-Do these in order. Each service needs its own account; sign up with the school's Gmail so everything belongs to the
-school, and use a different strong password for each one. Render deploys from GitHub, so when Render asks, connect the
-GitHub account that owns this repository (or give the school's GitHub account access to it).
+Every piece runs on a free plan and none needs a card:
 
-### 1. Database: Aiven PostgreSQL (free)
+| Piece | Service | Free allowance |
+|---|---|---|
+| Website | Render free web service | Sleeps after 15 minutes without visitors; the next visit takes about a minute to wake it |
+| Database | Aiven free PostgreSQL | 1 GB (plenty: videos are not stored here) |
+| Videos | Backblaze B2 | 10 GB stored; watching is free up to 3× what is stored, per month |
+| Email | Brevo | 300 emails a day |
+| M-PESA prompt | PayHero | No monthly fee; a small fee per successful payment ([pricing](https://app.payhero.co.ke/pricing)) |
+| Domain | Cloudflare DNS (already set up) | Free |
+
+Sign up for each with the school's Gmail and a different strong password for each one. If any of them asks for a card,
+stop: something is set to a paid plan.
+
+### 1. Database: Aiven PostgreSQL
 
 1. Sign up at [aiven.io](https://aiven.io) and create a project.
-2. **Create service → PostgreSQL → Free plan.** Pick a **Frankfurt** region if offered (it is closest to the Render
-   server below). Wait until the service shows *Running*.
+2. **Create service → PostgreSQL → Free plan**, in **Frankfurt** if offered. Wait until it shows *Running*.
 3. On the service's **Overview** page, copy the **Service URI** and download the **CA certificate** (`ca.pem`).
    Keep both private: the URI contains the database password.
 
-The free plan has 1 GB of storage and 20 connections, which is plenty here because videos are not stored in the database.
+### 2. Videos: Backblaze B2
 
-### 2. Website: Render (paid Starter, about US$7 a month plus the disk)
+1. Sign up at [backblaze.com/sign-up/cloud-storage](https://www.backblaze.com/sign-up/cloud-storage) and choose the
+   **EU Central** region when asked (closest to Kenya).
+2. **Buckets → Create a Bucket:** any unique name (e.g. `traviacafe-videos`), **Files in Bucket: Private**.
+   Note the bucket's **Endpoint**, e.g. `s3.eu-central-003.backblazeb2.com`.
+3. **Application Keys → Add a New Application Key:** allow access to that bucket only, **Read and Write**.
+   Copy the **keyID** and **applicationKey** (it is shown only once).
+4. **Caps & Alerts:** set every daily cap to **$0**, so you can never be charged.
 
-1. Sign up at [render.com](https://render.com) and connect GitHub.
-2. **New → Blueprint →** choose this repository. `render.yaml` creates the web service in Frankfurt with a 10 GB disk.
-3. Fill in the values Render asks for:
+Students never get a permanent video link: the site checks they have paid, then hands the player a link that expires
+after a few hours.
+
+### 3. Email: Brevo
+
+1. Sign up at [brevo.com](https://www.brevo.com) (free plan).
+2. **Senders, domains & dedicated IPs → Domains → Add a domain:** `traviacafe.com`, and add the DNS records Brevo shows
+   in Cloudflare (Brevo can do it for you with its Cloudflare option). Then add a sender such as `hello@traviacafe.com`.
+   Sending from the school's own domain is what keeps the emails out of spam folders.
+3. **SMTP & API → API keys → Generate a new API key**, and copy it.
+
+### 4. Website: Render
+
+1. Sign up at [render.com](https://render.com) and connect the GitHub account that owns this repository.
+2. **New → Blueprint →** choose this repository (`main`). `render.yaml` creates one **free** web service in Frankfurt.
+3. Fill in what Render asks for; leave anything you do not have yet blank and add it later under **Environment**:
 
    | Setting | Value |
    |---|---|
    | `DATABASE_URL` | the Aiven Service URI |
    | `DATABASE_CA_CERT` | the full text of `ca.pem` (open it in Notepad and copy everything) |
-   | `PUBLIC_URL` | `https://travia-cafe.onrender.com` for now; change to `https://traviacafe.com` in step 5 |
-   | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | the first admin login. Use a new, strong password |
-   | `SMTP_*`, `MAIL_FROM` | see step 4 (can be added later) |
-   | `PAYHERO_*` | see step 3 (can be added later) |
-   | `GOOGLE_*` | leave empty unless you set up Google sign-in |
+   | `PUBLIC_URL` | `https://travia-cafe.onrender.com` for now; change to `https://traviacafe.com` in step 6 |
+   | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | the first admin login. Leave blank if the admin already exists in the database |
+   | `S3_ENDPOINT`, `S3_BUCKET`, `S3_KEY_ID`, `S3_SECRET` | from Backblaze, step 2 |
+   | `BREVO_API_KEY` | from Brevo, step 3 |
+   | `MAIL_FROM` | `Travia Cafe <hello@traviacafe.com>` (the sender you verified in Brevo) |
+   | `MAIL_REPLY_TO` | `traviacafe@gmail.com`, so replies reach the school's inbox |
+   | `PAYHERO_*` | see step 5 (can be added later) |
 
 4. **Apply.** Tables are created on first start. Open `<PUBLIC_URL>/<STAFF_PATH>` to log in; Render generated a random
-   `STAFF_PATH`, which you can read under the service's **Environment** tab. In the dashboard, fill in **Settings**
-   (M-PESA till or paybill, contact phone and email) and add your modules and videos.
+   `STAFF_PATH`, which you can read under the service's **Environment** tab. Fill in **Settings** (M-PESA till or
+   paybill, contact phone and email), then add your modules and videos.
 
-Why the paid plan: Render's free instances wipe uploaded files on every restart (videos would disappear) and block
-outgoing email. Check [render.com/pricing](https://render.com/pricing) for current prices.
+Optional: the free site sleeps when nobody visits for 15 minutes. A free monitor such as
+[UptimeRobot](https://uptimerobot.com) or [cron-job.org](https://cron-job.org) opening `<PUBLIC_URL>/api/health` every
+10 minutes keeps it awake. Render gives 750 free hours a month, enough for one always-on site.
 
 Do not run `npm run seed` against production; it refuses when `NODE_ENV=production`.
 
-### 3. M-PESA prompt: PayHero
+### 5. M-PESA prompt: PayHero
 
 1. Sign up at [app.payhero.co.ke](https://app.payhero.co.ke) and complete their verification.
 2. **Payment Channels:** link the school's Till or Paybill. Note the **channel ID** under *My Payment Channels*.
@@ -188,18 +220,8 @@ Students then see **Pay with M-PESA** on their dashboard, approve the prompt on 
 seconds: videos unlock at once and class tickets are emailed, with nobody checking SMS messages. PayHero calls the site at
 `<PUBLIC_URL>/payhero/callback`; the site double-checks every payment with PayHero before trusting it, and re-checks on
 its own every minute in case a callback is lost. Paying from the M-PESA menu and typing the code keeps working as a backup.
-PayHero charges a small fee per successful payment ([pricing](https://app.payhero.co.ke/pricing)).
 
-### 4. Email: Gmail
-
-1. On the school's Google account, turn on **2-Step Verification**, then create an **App Password**
-   (Google Account → Security → App passwords).
-2. In Render: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=` the Gmail address, `SMTP_PASS=` the 16-character
-   App Password, `MAIL_FROM=Travia Cafe <the Gmail address>`.
-
-Until this is set, nothing is lost: every email is saved in the staff dashboard's **Emails** tab.
-
-### 5. Point traviacafe.com at the site
+### 6. Point traviacafe.com at the site
 
 `traviacafe.com` is on Cloudflare, currently showing the coming-soon page.
 
@@ -215,11 +237,15 @@ Until this is set, nothing is lost: every email is saved in the staff dashboard'
 4. Change `PUBLIC_URL` to `https://traviacafe.com`. If you use Google sign-in, add
    `https://traviacafe.com/auth/google/callback` to the OAuth client's redirect URIs.
 
+If you later move to a paid Render instance, you can attach a disk and leave `S3_BUCKET` empty to keep videos on the
+server, and use any SMTP server (such as Gmail with an App Password) instead of Brevo.
+
 ## Security notes
 
 - Staff passwords are hashed with scrypt. Login and code entry are rate-limited per IP.
 - One-time codes are stored only as hashes, so a leaked database cannot be used to unlock videos. The Emails tab does keep a
   copy of what was sent.
-- Videos are streamed only to signed-in students who have unlocked that module and are never in a public folder. Nothing on the web can
-  stop someone from screen-recording a video, but there is no download link, and shared codes do not work.
+- Videos are only played to signed-in students who have unlocked that module, from a private bucket (or folder) through
+  links that expire after a few hours. Nothing on the web can stop someone from screen-recording a video, but there is no
+  download link, and shared codes do not work.
 - Meeting links are never shown on the public site. They only go out by email to confirmed students.

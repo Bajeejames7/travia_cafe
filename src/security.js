@@ -75,17 +75,21 @@ function rateLimit(max, windowMs) {
   };
 }
 
-function securityHeaders(req, res, next) {
-  res.set({
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
-    'Referrer-Policy': 'same-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-    'Content-Security-Policy':
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-  });
-  if (PROD) res.set('Strict-Transport-Security', 'max-age=15552000');
-  next();
+/** `mediaOrigin` is the video storage host the player is redirected to, if videos are not served from this server. */
+function securityHeaders({ mediaOrigin = '' } = {}) {
+  const media = ["'self'", mediaOrigin].filter(Boolean).join(' ');
+  const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src ${media}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+  return (req, res, next) => {
+    res.set({
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'same-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      'Content-Security-Policy': csp,
+    });
+    if (PROD) res.set('Strict-Transport-Security', 'max-age=15552000');
+    next();
+  };
 }
 
 /**

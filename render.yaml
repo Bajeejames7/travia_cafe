@@ -1,18 +1,16 @@
-# Render Blueprint: New > Blueprint > pick this repo.
-# The database is external (Aiven PostgreSQL); paste its connection details when Render asks.
+# Render Blueprint: New > Blueprint > pick this repo. Everything here runs on free plans:
+#   website: Render free · database: Aiven free PostgreSQL · videos: Backblaze B2 free 10 GB · email: Brevo free.
+# Render's free plan has no persistent disk and blocks SMTP email, which is why videos go to Backblaze
+# and email goes through Brevo's web API. Blank values can be filled in later under the service's Environment tab.
 services:
   - type: web
     name: travia-cafe
     runtime: node
     region: frankfurt        # closest Render region to Kenya; create the Aiven database in Frankfurt too
-    plan: starter            # paid: needed for the video disk, and free instances cannot send email (SMTP is blocked)
+    plan: free               # sleeps after 15 minutes without visitors; the next visit takes about a minute
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: travia-videos    # uploaded videos live here and survive deploys
-      mountPath: /var/data
-      sizeGB: 10
     envVars:
       - key: NODE_ENV
         value: production
@@ -20,8 +18,6 @@ services:
         value: "22.13.0"
       - key: TRUST_PROXY
         value: "1"           # correct while the Cloudflare DNS record is "DNS only" (grey cloud); see README
-      - key: DATA_DIR
-        value: /var/data
       - key: STAFF_PATH
         generateValue: true  # random secret path for the staff dashboard; read it in the Render dashboard
       - key: DATABASE_URL    # Aiven service URI, e.g. postgres://avnadmin:...@...aivencloud.com:12345/defaultdb?sslmode=require
@@ -30,25 +26,25 @@ services:
         sync: false
       - key: PUBLIC_URL      # https://traviacafe.com once the domain points here (https://travia-cafe.onrender.com until then)
         sync: false
-      - key: ADMIN_EMAIL
+      - key: ADMIN_EMAIL     # only used if the database has no admin yet
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: SMTP_HOST       # Gmail: smtp.gmail.com
+      - key: S3_ENDPOINT     # Backblaze bucket page > Endpoint, e.g. s3.eu-central-003.backblazeb2.com
         sync: false
-      - key: SMTP_PORT
-        value: "465"
-      - key: SMTP_USER       # Gmail: the full Gmail address
+      - key: S3_BUCKET       # the private bucket's name
         sync: false
-      - key: SMTP_PASS       # Gmail: a 16-character App Password, not the account password
+      - key: S3_KEY_ID       # Backblaze > Application Keys > keyID
         sync: false
-      - key: MAIL_FROM       # e.g. Travia Cafe <traviacafe@gmail.com>
+      - key: S3_SECRET       # Backblaze > Application Keys > applicationKey (shown once)
+        sync: false
+      - key: BREVO_API_KEY   # Brevo > SMTP & API > API keys
+        sync: false
+      - key: MAIL_FROM       # a sender verified in Brevo, e.g. Travia Cafe <hello@traviacafe.com>
+        sync: false
+      - key: MAIL_REPLY_TO   # where student replies go, e.g. traviacafe@gmail.com
         sync: false
       - key: PAYHERO_AUTH    # PayHero > API Keys > Basic Authorization token. Empty = M-PESA prompt off
         sync: false
       - key: PAYHERO_CHANNEL_ID  # PayHero > Payment Channels > My Payment Channels > channel ID
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
         sync: false

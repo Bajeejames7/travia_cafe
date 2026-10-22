@@ -589,8 +589,8 @@ async function renderVideos() {
   view.innerHTML = `
     <div class="panel">
       <h3>Upload a video</h3>
-      <p class="muted small">Videos are stored privately on the server. Students can only stream them after redeeming a code
-        for that module; there is no public link. Use MP4 (H.264) for the widest phone support.</p>
+      <p class="muted small">Videos are stored privately. Students can only watch a module's videos once they have paid
+        for it, through a link that expires after a few hours; there is no public link. Use MP4 (H.264) for the widest phone support.</p>
       ${
         mods.length
           ? `<form id="uploadForm" novalidate>
@@ -867,7 +867,7 @@ async function boot() {
     me.mail_configured || me.role !== 'admin' ? '' : 'warn',
     me.mail_configured || me.role !== 'admin'
       ? ''
-      : '<strong>Email is not set up.</strong> Codes and links are only saved in the Emails tab, so send them by hand until SMTP is configured (see README).'
+      : '<strong>Email is not set up.</strong> Codes and links are only saved in the Emails tab, so send them by hand until email is configured (see README).'
   );
   const allowed = TABS.filter((t) => !t.admin || me.role === 'admin').map((t) => t.id);
   const wanted = location.hash.slice(1);
