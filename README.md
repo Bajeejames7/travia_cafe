@@ -114,6 +114,24 @@ confirms their address with a 6-digit code:
   you can read one out if a student's email is slow.
 - Demo students from `npm run seed` are already confirmed.
 
+**Logo files** (`public/brand/`, all made from the owner's original artwork by cropping and resizing only):
+
+| File | Used for |
+|---|---|
+| `logo-mark-96.png` | The cup icon in the site header and footer (shown at 32px) |
+| `favicon-32.png`, `../favicon.ico` | Browser tab icon |
+| `apple-touch-icon.png` (180px) | Icon when someone adds the site to an iPhone home screen |
+| `logo-mark-192.png`, `logo-mark-512.png`, `../logo.png` | Larger icon sizes; `logo.png` is the logo Google shows in search |
+| `logo-full.jpg` | Full logo with wordmark and tagline (log-in page) |
+| `../og-image.jpg` (1200x630) | Preview picture when the link is shared on WhatsApp, Facebook or X |
+
+The original was a WhatsApp-compressed JPEG. If the designer has a high-resolution PNG or SVG, regenerating these
+from it will make the larger sizes sharper.
+
+**Home page effects.** The hero shows code rain (mostly 1s and 0s, like the logo) and a terminal that types out the real
+course list. Both live in `public/hero-fx.js`, which only the home page loads; visitors who turn on "reduce motion" get
+the terminal already typed and no rain.
+
 **Light and dark theme.** The sun/moon button in the top bar switches between a dark and a light theme. Each visitor's
 choice is remembered; until they choose, their device setting decides.
 

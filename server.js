@@ -1663,8 +1663,6 @@ app.get(STAFF_PATH, (req, res) => {
 });
 app.get(`${STAFF_PATH}/staff.js`, (req, res) => res.sendFile(path.join(__dirname, 'private', 'staff.js')));
 app.get('/learn', (req, res) => res.redirect(301, '/account'));
-// Browsers ask for /favicon.ico on their own; serve our SVG so a stale icon from another app is replaced.
-app.get('/favicon.ico', (req, res) => res.type('image/svg+xml').sendFile(path.join(__dirname, 'public', 'favicon.svg')));
 // For search engines. Private areas are kept out; the staff path is secret, so it is deliberately not listed here.
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(

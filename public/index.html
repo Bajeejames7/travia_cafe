@@ -13,26 +13,28 @@
   <meta property="og:url" content="https://traviacafe.com/">
   <meta property="og:title" content="Travia Cafe — Cybersecurity Courses in Kenya">
   <meta property="og:description" content="Self-paced video lessons, live online classes or in-person training. Pay with M-PESA.">
-  <meta property="og:image" content="https://traviacafe.com/og-image.png">
+  <meta property="og:image" content="https://traviacafe.com/og-image.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Travia Cafe: learn to protect systems, networks and data.">
+  <meta property="og:image:alt" content="traviaCafe logo: Connect. Explore. Brew.">
   <meta name="twitter:card" content="summary_large_image">
-  <link rel="apple-touch-icon" href="/logo.png">
   <!-- Tells Google who runs the site (name, logo, contact). A data block, not a script, so the CSP does not apply. -->
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"EducationalOrganization","name":"Travia Cafe","url":"https://traviacafe.com/","logo":"https://traviacafe.com/logo.png","description":"Practical cybersecurity courses in Kenya: self-paced video lessons, live online classes and in-person training.","email":"traviacafe@gmail.com","areaServed":{"@type":"Country","name":"Kenya"}}
   </script>
-  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=5">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css?v=6">
   <script src="/common.js?v=4" defer></script>
   <script src="/fx.js?v=3" defer></script>
-  <script src="/app.js?v=4" defer></script>
+  <script src="/app.js?v=5" defer></script>
+  <script src="/hero-fx.js?v=1" defer></script>
 </head>
 <body>
   <header class="topbar">
     <div class="wrap row">
-      <a class="brand" href="/"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.6c0 4.9-3.2 9.2-7.5 10.8-4.3-1.6-7.5-5.9-7.5-10.8V5.3L12 2.5z"/><path d="M8.8 12l2.3 2.3 4.4-4.5"/></svg></span><span data-school>Travia Cafe</span></a>
+      <a class="brand" href="/"><span class="logo"><img src="/brand/logo-mark-96.png" width="32" height="32" alt=""></span><span data-school>Travia Cafe</span></a>
       <nav class="nav-links" aria-label="Main">
         <a href="#courses">Courses</a>
         <a href="#how">How it works</a>
@@ -51,7 +53,7 @@
       <section class="hero wrap">
         <div class="hero-grid">
           <div>
-            <p class="eyebrow">Cybersecurity school</p>
+            <p class="eyebrow">Connect. Explore. Brew.</p>
             <h1>Learn to <span class="hl">protect</span> systems, networks and data.</h1>
             <p class="lead" data-tagline>Practical cybersecurity training — self-paced, live online, or in person.</p>
             <div class="row cta">
@@ -64,14 +66,19 @@
               <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Online or in person</li>
             </ul>
           </div>
-          <aside class="hero-card" aria-label="Course catalogue">
-            <div class="hero-card-head"><strong>Course catalogue</strong><a class="small" href="#courses">See all</a></div>
-            <ul class="hero-list" id="heroCourses">
-              <li><span class="ic"></span><span class="t"><span class="skeleton" style="width:70%"></span></span></li>
-              <li><span class="ic"></span><span class="t"><span class="skeleton" style="width:55%"></span></span></li>
-              <li><span class="ic"></span><span class="t"><span class="skeleton" style="width:62%"></span></span></li>
-            </ul>
-            <div class="hero-card-foot"><a class="btn ghost wide" href="#enroll">Enrol in a course</a></div>
+          <aside class="hero-aside">
+            <div class="terminal" aria-hidden="true">
+              <div class="term-bar"><i></i><i></i><i></i><span>student@traviacafe:~</span></div>
+<pre id="term"><span class="p">$</span> ls ~/courses
+<span class="hl">cybersecurity-foundations/</span>
+<span class="hl">network-security/</span>
+<span class="hl">ethical-hacking-lab/</span>
+<span class="p">$</span> ./enrol --pay mpesa
+<span class="ok">[ ok ]</span> payment ..... confirmed
+<span class="ok">[ ok ]</span> access ...... granted
+<span class="p">$</span> ./start-learning</pre>
+            </div>
+            <div class="caption"><span id="termCaption">Video, live online and in-person courses</span><a href="#courses">See all courses</a></div>
           </aside>
         </div>
       </section>
@@ -277,8 +284,9 @@
   <footer>
     <div class="wrap row">
       <div>
-        <a class="brand" href="/"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.6c0 4.9-3.2 9.2-7.5 10.8-4.3-1.6-7.5-5.9-7.5-10.8V5.3L12 2.5z"/><path d="M8.8 12l2.3 2.3 4.4-4.5"/></svg></span><span data-school>Travia Cafe</span></a>
-        <p class="m-top m0">&copy; <span id="year"></span> <span data-school>Travia Cafe</span></p>
+        <a class="brand" href="/"><span class="logo"><img src="/brand/logo-mark-96.png" width="32" height="32" alt=""></span><span data-school>Travia Cafe</span></a>
+        <p class="m-top m0">Connect. Explore. Brew.</p>
+        <p class="m0">&copy; <span id="year"></span> <span data-school>Travia Cafe</span></p>
       </div>
       <nav aria-label="Footer">
         <a href="#courses">Courses</a>
