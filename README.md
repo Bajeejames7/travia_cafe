@@ -237,6 +237,23 @@ its own every minute in case a callback is lost. Paying from the M-PESA menu and
 4. Change `PUBLIC_URL` to `https://traviacafe.com`. If you use Google sign-in, add
    `https://traviacafe.com/auth/google/callback` to the OAuth client's redirect URIs.
 
+### 7. Optional: "Continue with Google"
+
+Students can then sign in with their Google account instead of a password. Signing in only opens their account:
+courses still unlock only once a payment has been confirmed, exactly as with email sign-up. Do this after step 6, so
+Google can send students back to `traviacafe.com`. It is free and needs no billing account.
+
+1. Open [console.cloud.google.com](https://console.cloud.google.com) with the school's Gmail and create a project
+   (e.g. *Travia Cafe*).
+2. **Google Auth Platform → Get started:** app name *Travia Cafe*, support email, audience **External**, contact email.
+3. **Branding:** add `traviacafe.com` under **Authorised domains**.
+4. **Audience → Publish app**, so any Google user can sign in (in *Testing* mode only listed test users can).
+   The site only asks for name and email, which needs no Google review.
+5. **Clients → Create client → Web application.** Under **Authorised redirect URIs** add
+   `https://traviacafe.com/auth/google/callback`. Create, then copy the **Client ID** and **Client secret**.
+6. In Render, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (and make sure `PUBLIC_URL` is
+   `https://traviacafe.com`). The **Continue with Google** button appears on the log-in page after the redeploy.
+
 If you later move to a paid Render instance, you can attach a disk and leave `S3_BUCKET` empty to keep videos on the
 server, and use any SMTP server (such as Gmail with an App Password) instead of Brevo.
 

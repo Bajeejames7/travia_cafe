@@ -48,3 +48,7 @@ services:
         sync: false
       - key: PAYHERO_CHANNEL_ID  # PayHero > Payment Channels > My Payment Channels > channel ID
         sync: false
+      - key: GOOGLE_CLIENT_ID    # "Continue with Google" for students; empty = button hidden (see README)
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

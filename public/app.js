@@ -29,6 +29,35 @@ function courseCard(m) {
   </article>`;
 }
 
+/** Short course summary for the hero card: up to four courses, each with its cheapest option. */
+function renderHero(modules) {
+  const list = $('#heroCourses');
+  if (!modules.length) {
+    list.innerHTML = '<li><span class="t"><strong>New courses coming soon</strong><span>Check back shortly.</span></span></li>';
+    return;
+  }
+  const initials = (t) =>
+    t
+      .split(/\s+/)
+      .filter((w) => /^[A-Za-z0-9]/.test(w))
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase())
+      .join('');
+  list.innerHTML = modules
+    .slice(0, 4)
+    .map((m) => {
+      const from = Math.min(m.price_self, m.price_live, m.price_physical);
+      const bits = [];
+      if (m.video_count) bits.push(`${m.video_count} video lesson${m.video_count === 1 ? '' : 's'}`);
+      const n = upcoming(m).length;
+      if (n) bits.push(`${n} upcoming class${n === 1 ? '' : 'es'}`);
+      return `<li><span class="ic" aria-hidden="true">${esc(initials(m.title))}</span>
+        <span class="t"><strong>${esc(m.title)}</strong><span>${esc(bits.join(' · ') || 'Video, live and in-person options')}</span></span>
+        <span class="p">from KSh ${ksh(from)}</span></li>`;
+    })
+    .join('');
+}
+
 function renderCatalog() {
   const { school, prices, modules, payment } = catalog;
   document.title = `${school.name} — Cybersecurity School`;
@@ -42,6 +71,7 @@ function renderCatalog() {
     $(`[data-price="${t}"]`).textContent = ksh(list.length ? Math.min(...list) : prices[t]);
   }
 
+  renderHero(modules);
   $('#courseList').innerHTML = modules.length ? modules.map(courseCard).join('') : '<div class="empty">New courses are being published. Check back soon.</div>';
   $('#courseList')
     .querySelectorAll('[data-course]')
@@ -185,6 +215,10 @@ api('/api/me')
   .catch(() => {})
   .finally(renderAuth);
 
+api('/api/auth/config')
+  .then((c) => ($('#faqGoogle').hidden = !c.google))
+  .catch(() => {});
+
 api('/api/public/catalog')
   .then((c) => {
     catalog = c;
@@ -197,5 +231,6 @@ api('/api/public/catalog')
   })
   .catch(() => {
     $('#courseList').innerHTML = '<div class="empty">Could not load courses. Please refresh the page.</div>';
+    $('#heroCourses').innerHTML = '<li><span class="t"><strong>Could not load courses</strong><span>Please refresh the page.</span></span></li>';
     notice($('#enrollMsg'), 'err', 'Could not load courses. Please refresh the page.');
   });

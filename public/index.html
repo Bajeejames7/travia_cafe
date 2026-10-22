@@ -4,20 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Travia Cafe — Cybersecurity School</title>
-  <meta name="description" content="Learn cybersecurity your way: self-paced videos, live online classes, or in-person sessions. Pay with M-PESA.">
-  <meta name="theme-color" content="#0a0e13">
+  <meta name="description" content="Practical cybersecurity training: self-paced video lessons, live online classes, or in-person sessions. Pay with M-PESA.">
+  <meta name="theme-color" content="#0b1016">
   <meta property="og:title" content="Travia Cafe — Cybersecurity School">
-  <meta property="og:description" content="Self-paced videos, live online classes, or in-person sessions. Pay with M-PESA.">
-  <link rel="icon" href="/favicon.svg?v=1" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=2">
-  <script src="/common.js?v=2" defer></script>
-  <script src="/fx.js?v=2" defer></script>
-  <script src="/app.js?v=2" defer></script>
+  <meta property="og:description" content="Self-paced video lessons, live online classes, or in-person sessions. Pay with M-PESA.">
+  <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css?v=3">
+  <script src="/common.js?v=3" defer></script>
+  <script src="/fx.js?v=3" defer></script>
+  <script src="/app.js?v=3" defer></script>
 </head>
 <body>
   <header class="topbar">
     <div class="wrap row">
-      <a class="brand" href="/"><span class="logo">&gt;_</span><span data-school>Travia Cafe</span></a>
+      <a class="brand" href="/"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.6c0 4.9-3.2 9.2-7.5 10.8-4.3-1.6-7.5-5.9-7.5-10.8V5.3L12 2.5z"/><path d="M8.8 12l2.3 2.3 4.4-4.5"/></svg></span><span data-school>Travia Cafe</span></a>
       <nav class="nav-links" aria-label="Main">
         <a href="#courses">Courses</a>
         <a href="#how">How it works</a>
@@ -32,69 +32,72 @@
   </header>
 
   <main>
-    <section class="hero wrap">
-      <div class="hero-grid">
-        <div>
-          <p class="eyebrow">Cybersecurity school</p>
-          <h1 class="cursor">Learn cyber&shy;security <span class="hl">your way.</span></h1>
-          <p class="lead" data-tagline>Practical cybersecurity training — self-paced, live online, or in person.</p>
-          <div class="row cta">
-            <a class="btn lg" href="#enroll">Start learning</a>
-            <a class="btn lg ghost" href="#courses">See courses &amp; prices</a>
+    <div class="hero-band">
+      <section class="hero wrap">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Cybersecurity school</p>
+            <h1>Learn to <span class="hl">protect</span> systems, networks and data.</h1>
+            <p class="lead" data-tagline>Practical cybersecurity training — self-paced, live online, or in person.</p>
+            <div class="row cta">
+              <a class="btn lg" href="#enroll">Start learning</a>
+              <a class="btn lg ghost" href="#courses">See courses &amp; prices</a>
+            </div>
+            <ul class="trust">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Pay with M-PESA</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Learn on any device</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Online or in person</li>
+            </ul>
           </div>
-          <ul class="trust">
-            <li>Pay with M-PESA</li>
-            <li>Videos, live or in person</li>
-            <li>Learn on your phone</li>
-          </ul>
+          <aside class="hero-card" aria-label="Course catalogue">
+            <div class="hero-card-head"><strong>Course catalogue</strong><a class="small" href="#courses">See all</a></div>
+            <ul class="hero-list" id="heroCourses">
+              <li><span class="ic"></span><span class="t"><span class="skeleton" style="width:70%"></span></span></li>
+              <li><span class="ic"></span><span class="t"><span class="skeleton" style="width:55%"></span></span></li>
+              <li><span class="ic"></span><span class="t"><span class="skeleton" style="width:62%"></span></span></li>
+            </ul>
+            <div class="hero-card-foot"><a class="btn ghost wide" href="#enroll">Enrol in a course</a></div>
+          </aside>
         </div>
-        <div class="terminal" aria-hidden="true">
-          <div class="term-bar"><i></i><i></i><i></i><span>student@traviacafe:~</span></div>
-<pre id="term"><span class="p">$</span> ./enrol --self-paced
-<span class="ok">[ ok ]</span> course picked ... done
-<span class="ok">[ ok ]</span> paid M-PESA ..... done
-<span class="ok">[ ok ]</span> videos ready .... done
-<span class="p">$</span> ./start-learning
-<span class="dim">&gt; welcome aboard, operator.</span></pre>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <section id="how" class="wrap">
       <div class="section-head">
-        <h2>How it works</h2>
-        <p>Three steps from sign-up to your first lesson.</p>
+        <span class="kicker">How it works</span>
+        <h2>From sign-up to your first lesson</h2>
+        <p>Three steps, all from your phone.</p>
       </div>
       <div class="steps-3">
         <article class="panel">
-          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M8 7h6M8 11h6"/></svg></div>
+          <span class="num-chip" aria-hidden="true"></span>
           <h3>Pick a course</h3>
-          <p>Choose a module and how you want to learn: videos, a live online class, or in person.</p>
+          <p>Choose a module and how you want to learn: video lessons, a live online class, or in person.</p>
         </article>
         <article class="panel">
-          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+          <span class="num-chip" aria-hidden="true"></span>
           <h3>Pay with M-PESA</h3>
           <p data-pay-blurb>Pay from your phone with M-PESA. No card or bank account needed.</p>
         </article>
         <article class="panel">
-          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg></div>
+          <span class="num-chip" aria-hidden="true"></span>
           <h3>Start learning</h3>
-          <p>Videos open in your dashboard. Class tickets and meeting links are emailed to you.</p>
+          <p>Once your payment is confirmed, videos open in your dashboard. Class tickets and meeting links are emailed to you.</p>
         </article>
       </div>
     </section>
 
     <section id="tracks" class="wrap">
       <div class="section-head">
-        <h2>Three ways to learn</h2>
+        <span class="kicker">Ways to learn</span>
+        <h2>Learn the way that suits you</h2>
         <p>Every option is priced per module, so you only pay for what you take.</p>
       </div>
       <div class="grid3">
         <article class="card">
           <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><polygon points="10 8 15 11 10 14 10 8"/><path d="M8 21h8"/></svg></div>
-          <span class="tag">Self-paced</span>
-          <h3 class="m-top">Video lessons</h3>
-          <p class="muted">Learn on your own, at your own speed.</p>
+          <h3>Self-paced video lessons</h3>
+          <p class="muted">Learn on your own schedule, at your own speed.</p>
           <div class="price"><small>from</small> KSh <span data-price="self">—</span> <small>per module</small></div>
           <ul>
             <li>Watch any time, as often as you like</li>
@@ -105,9 +108,8 @@
         </article>
         <article class="card">
           <div class="icon-badge info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-          <span class="tag info">Live online</span>
-          <h3 class="m-top">Classes over video call</h3>
-          <p class="muted">A real teacher, wherever you are, even on a busy schedule.</p>
+          <h3>Live online classes</h3>
+          <p class="muted">A teacher on a video call, wherever you are.</p>
           <div class="price"><small>from</small> KSh <span data-price="live">—</span> <small>per session</small></div>
           <ul>
             <li>Ask questions in real time</li>
@@ -118,12 +120,11 @@
         </article>
         <article class="card">
           <div class="icon-badge warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-          <span class="tag ok">In person</span>
-          <h3 class="m-top">Hands-on lab classes</h3>
+          <h3>In-person classes</h3>
           <p class="muted">Learn face to face, with a teacher in the room.</p>
           <div class="price"><small>from</small> KSh <span data-price="physical">—</span> <small>per session</small></div>
           <ul>
-            <li>Small groups and lab time</li>
+            <li>Small groups and hands-on practice</li>
             <li>Your one-time code is your ticket</li>
             <li>Venue and time sent by email</li>
           </ul>
@@ -134,15 +135,17 @@
 
     <section id="courses" class="wrap">
       <div class="section-head">
-        <h2>Courses &amp; prices</h2>
-        <p>Pick a course to see it in the enrol form below.</p>
+        <span class="kicker">Courses</span>
+        <h2>Courses and prices</h2>
+        <p>Choose a course to open it in the enrolment form.</p>
       </div>
       <div class="courses" id="courseList"><div class="empty">Loading courses…</div></div>
     </section>
 
     <section id="enroll" class="wrap">
       <div class="section-head">
-        <h2>Enrol</h2>
+        <span class="kicker">Enrol</span>
+        <h2>Enrol in a course</h2>
         <p>Takes about a minute. You pay on the next screen.</p>
       </div>
       <form id="enrollForm" class="panel enrol" novalidate>
@@ -190,6 +193,7 @@
 
     <section id="pay" class="wrap">
       <div class="section-head">
+        <span class="kicker">Paying</span>
         <h2>Paying with M-PESA</h2>
         <p id="payIntro">After you enrol, your dashboard shows the exact amount and your reference.</p>
       </div>
@@ -213,7 +217,8 @@
 
     <section id="faq" class="wrap">
       <div class="section-head">
-        <h2>Questions</h2>
+        <span class="kicker">FAQ</span>
+        <h2>Common questions</h2>
       </div>
       <div class="faq">
         <details>
@@ -224,6 +229,11 @@
         <details>
           <summary>How long does it take to confirm my payment?</summary>
           <p data-faq-speed>We check each M-PESA payment and confirm it, usually quickly during working hours. You get an email as soon as it's done.</p>
+        </details>
+        <details id="faqGoogle" hidden>
+          <summary>Can I sign in with Google?</summary>
+          <p>Yes. Choose "Continue with Google" on the log-in page. Signing in only opens your account: a course still opens
+            once its payment has been confirmed, the same as with an email and password.</p>
         </details>
         <details>
           <summary>Can I watch the videos on my phone?</summary>
@@ -243,7 +253,7 @@
     <section class="wrap">
       <div class="panel cta-band">
         <h2>Ready to start?</h2>
-        <p>Create a free account, pick a course, and pay with M-PESA.</p>
+        <p>Create a free account, choose a course, and pay with M-PESA.</p>
         <a class="btn lg" href="#enroll">Enrol now</a>
       </div>
     </section>
@@ -252,7 +262,7 @@
   <footer>
     <div class="wrap row">
       <div>
-        <a class="brand" href="/"><span class="logo">&gt;_</span><span data-school>Travia Cafe</span></a>
+        <a class="brand" href="/"><span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.6c0 4.9-3.2 9.2-7.5 10.8-4.3-1.6-7.5-5.9-7.5-10.8V5.3L12 2.5z"/><path d="M8.8 12l2.3 2.3 4.4-4.5"/></svg></span><span data-school>Travia Cafe</span></a>
         <p class="m-top m0">&copy; <span id="year"></span> <span data-school>Travia Cafe</span></p>
       </div>
       <nav aria-label="Footer">

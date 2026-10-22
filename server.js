@@ -99,9 +99,15 @@ function nowNairobi() {
 }
 const nowIso = () => new Date().toISOString();
 
-/** Site address for links in emails. `req` is optional so background jobs can use it too. */
+/**
+ * Site address for links in emails and the PayHero callback. `req` is optional so background jobs can use it too.
+ * Without PUBLIC_URL: the address the visitor used, else the one Render assigns (RENDER_EXTERNAL_URL), so emails
+ * sent by the background payment check never point at localhost.
+ */
 function baseUrl(req) {
-  const fallback = req ? `${req.protocol}://${req.get('host')}` : `http://localhost:${PORT}`;
+  const fallback = req
+    ? `${req.protocol}://${req.get('host')}`
+    : process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
   return (process.env.PUBLIC_URL || fallback).replace(/\/+$/, '');
 }
 
