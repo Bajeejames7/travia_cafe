@@ -1502,6 +1502,16 @@ app.get(`${STAFF_PATH}/staff.js`, (req, res) => res.sendFile(path.join(__dirname
 app.get('/learn', (req, res) => res.redirect(301, '/account'));
 // Browsers ask for /favicon.ico on their own; serve our SVG so a stale icon from another app is replaced.
 app.get('/favicon.ico', (req, res) => res.type('image/svg+xml').sendFile(path.join(__dirname, 'public', 'favicon.svg')));
+// For search engines. Private areas are kept out; the staff path is secret, so it is deliberately not listed here.
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(
+    ['User-agent: *', 'Allow: /', 'Disallow: /account', 'Disallow: /api/', 'Disallow: /auth/', `Sitemap: ${baseUrl(req)}/sitemap.xml`, ''].join('\n')
+  );
+});
+app.get('/sitemap.xml', (req, res) => {
+  const urls = ['/', '/privacy', '/terms'].map((p) => `  <url><loc>${baseUrl(req)}${p}</loc></url>`).join('\n');
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+});
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));

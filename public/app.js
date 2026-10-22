@@ -60,7 +60,7 @@ function renderHero(modules) {
 
 function renderCatalog() {
   const { school, prices, modules, payment } = catalog;
-  document.title = `${school.name} — Cybersecurity School`;
+  document.title = `${school.name} — Cybersecurity Courses in Kenya`;
   document.querySelectorAll('[data-school]').forEach((el) => (el.textContent = school.name));
   if (school.tagline) $('[data-tagline]').textContent = school.tagline;
   document.querySelectorAll('[data-devices]').forEach((el) => (el.textContent = school.max_devices));
