@@ -33,7 +33,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.font = `${SIZE}px 'JetBrains Mono', monospace`;
       // Only some columns rain, which keeps it calm rather than a wall of characters.
-      cols = Array.from({ length: Math.ceil(w / SIZE) }, (_, i) => (i in cols ? cols[i] : Math.random() < 0.45 ? (Math.random() * -h) / SIZE : null));
+      cols = Array.from({ length: Math.ceil(w / SIZE) }, (_, i) => (i in cols ? cols[i] : Math.random() < 0.3 ? (Math.random() * -h) / SIZE : null));
     }
     resize();
     if ('ResizeObserver' in window) new ResizeObserver(resize).observe(band);
@@ -126,7 +126,7 @@
   }
 
   // ---------------------------------------------------------------- glitch
-  /** Every 5–9 seconds the headline shakes briefly (styles.css .glitching); skipped while nobody can see it. */
+  /** Every 9–15 seconds the headline shakes briefly (styles.css .glitching); skipped while nobody can see it. */
   function glitch() {
     const h1 = band.querySelector('h1');
     if (!h1) return;
@@ -138,7 +138,7 @@
           setTimeout(() => h1.classList.remove('glitching'), 450);
         }
         schedule();
-      }, 5000 + Math.random() * 4000);
+      }, 9000 + Math.random() * 6000);
     })();
   }
 

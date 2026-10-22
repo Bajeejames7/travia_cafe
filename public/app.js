@@ -16,16 +16,14 @@ const upcoming = (mod, t) => catalog.classes.filter((c) => c.module_id === mod.i
 function courseCard(m) {
   const lessons = m.video_count ? `<span class="tag ok">${m.video_count} video lesson${m.video_count === 1 ? '' : 's'}</span>` : '';
   const classes = upcoming(m).length ? `<span class="tag info">${upcoming(m).length} upcoming class${upcoming(m).length === 1 ? '' : 'es'}</span>` : '';
+  const from = Math.min(m.price_self, m.price_live, m.price_physical);
   return `<article class="card course">
     <h3>${esc(m.title)}</h3>
     ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
     ${lessons || classes ? `<div class="meta">${lessons}${classes}</div>` : ''}
-    <dl class="price-list">
-      <div><dt>Self-paced</dt><dd>KSh ${ksh(m.price_self)}</dd></div>
-      <div><dt>Live online</dt><dd>KSh ${ksh(m.price_live)}</dd></div>
-      <div><dt>In person</dt><dd>KSh ${ksh(m.price_physical)}</dd></div>
-    </dl>
-    <button type="button" class="btn ghost wide" data-course="${m.id}">Enrol in this course</button>
+    <p class="from">from KSh ${ksh(from)}</p>
+    <p class="prices">Video ${ksh(m.price_self)} · Live ${ksh(m.price_live)} · In person ${ksh(m.price_physical)}</p>
+    <button type="button" class="btn ghost wide" data-course="${m.id}">Enrol</button>
   </article>`;
 }
 
@@ -59,8 +57,8 @@ function renderCatalog() {
 
   $('#payGuide').innerHTML = paymentSteps(payment);
   if (payment.stk) {
-    $('#payIntro').innerHTML = 'The quickest way: in your dashboard, tap <strong>Pay with M-PESA</strong> and enter your PIN on the prompt that appears on your phone. Prefer the M-PESA menu? Follow these steps.';
-    $('[data-pay-blurb]').textContent = 'Approve the M-PESA prompt on your phone. No card or bank account needed.';
+    $('#payIntro').innerHTML = 'The quickest way: after you enrol, tap <strong>Pay with M-PESA</strong> in your dashboard and enter your PIN on the prompt that appears on your phone. Or pay from the M-PESA menu:';
+    $('[data-pay-blurb]').textContent = 'Pay with the M-PESA prompt on your phone';
     $('[data-faq-speed]').textContent =
       'With the M-PESA prompt, your payment is confirmed within seconds. If you pay from the M-PESA menu instead, we check your code and confirm it, usually quickly during working hours.';
   }
@@ -71,7 +69,7 @@ function renderCatalog() {
   if (wa) contact.push(`<a href="${wa}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`);
   if (school.contact_email) contact.push(`<a href="mailto:${esc(school.contact_email)}">${esc(school.contact_email)}</a>`);
   $('#contactLine').innerHTML = contact.join(' · ');
-  if (contact.length) $('#helpLine').innerHTML = `Questions about paying or enrolling? ${contact.join(' · ')}`;
+  if (contact.length) $('#helpLine').innerHTML = `Call, WhatsApp or email us: ${contact.join(' · ')}`;
   updateForm();
 }
 

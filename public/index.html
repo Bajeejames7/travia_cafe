@@ -25,11 +25,11 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/styles.css?v=7">
+  <link rel="stylesheet" href="/styles.css?v=8">
   <script src="/common.js?v=4" defer></script>
-  <script src="/fx.js?v=3" defer></script>
-  <script src="/app.js?v=5" defer></script>
-  <script src="/hero-fx.js?v=2" defer></script>
+  <script src="/fx.js?v=4" defer></script>
+  <script src="/app.js?v=6" defer></script>
+  <script src="/hero-fx.js?v=3" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -38,7 +38,6 @@
       <nav class="nav-links" aria-label="Main">
         <a href="#courses">Courses</a>
         <a href="#how">How it works</a>
-        <a href="#pay">Paying</a>
         <a href="#faq">FAQ</a>
       </nav>
       <div class="nav-actions">
@@ -57,8 +56,8 @@
             <h1>Learn to <span class="hl">protect</span> systems, networks and data.</h1>
             <p class="lead" data-tagline>Practical cybersecurity training — self-paced, live online, or in person.</p>
             <div class="row cta">
-              <a class="btn lg" href="#enroll">Start learning</a>
-              <a class="btn lg ghost" href="#courses">See courses &amp; prices</a>
+              <a class="btn lg" href="#courses">Browse courses</a>
+              <a class="btn lg ghost" href="#how">How it works</a>
             </div>
             <ul class="trust">
               <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Pay with M-PESA</li>
@@ -84,84 +83,45 @@
       </section>
     </div>
 
-    <section id="how" class="wrap">
-      <div class="section-head">
-        <span class="kicker">How it works</span>
-        <h2>From sign-up to your first lesson</h2>
-        <p>Three steps, all from your phone.</p>
-      </div>
-      <div class="steps-3">
-        <article class="panel">
-          <span class="num-chip" aria-hidden="true"></span>
-          <h3>Pick a course</h3>
-          <p>Choose a module and how you want to learn: video lessons, a live online class, or in person.</p>
-        </article>
-        <article class="panel">
-          <span class="num-chip" aria-hidden="true"></span>
-          <h3>Pay with M-PESA</h3>
-          <p data-pay-blurb>Pay from your phone with M-PESA. No card or bank account needed.</p>
-        </article>
-        <article class="panel">
-          <span class="num-chip" aria-hidden="true"></span>
-          <h3>Start learning</h3>
-          <p>Once your payment is confirmed, videos open in your dashboard. Class tickets and meeting links are emailed to you.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="tracks" class="wrap">
-      <div class="section-head">
-        <span class="kicker">Ways to learn</span>
-        <h2>Learn the way that suits you</h2>
-        <p>Every option is priced per module, so you only pay for what you take.</p>
-      </div>
-      <div class="grid3">
-        <article class="card">
-          <div class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><polygon points="10 8 15 11 10 14 10 8"/><path d="M8 21h8"/></svg></div>
-          <h3>Self-paced video lessons</h3>
-          <p class="muted">Learn on your own schedule, at your own speed.</p>
-          <div class="price"><small>from</small> KSh <span data-price="self">—</span> <small>per module</small></div>
-          <ul>
-            <li>Watch any time, as often as you like</li>
-            <li>Works on phone, tablet or computer</li>
-            <li>Start as soon as your payment is confirmed</li>
-          </ul>
-          <a class="btn ghost wide" href="#enroll" data-pick="self">Choose self-paced</a>
-        </article>
-        <article class="card">
-          <div class="icon-badge info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-          <h3>Live online classes</h3>
-          <p class="muted">A teacher on a video call, wherever you are.</p>
-          <div class="price"><small>from</small> KSh <span data-price="live">—</span> <small>per session</small></div>
-          <ul>
-            <li>Ask questions in real time</li>
-            <li>Join link in your dashboard and email</li>
-            <li>Join from anywhere</li>
-          </ul>
-          <a class="btn ghost wide" href="#enroll" data-pick="live">Choose live online</a>
-        </article>
-        <article class="card">
-          <div class="icon-badge warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-          <h3>In-person classes</h3>
-          <p class="muted">Learn face to face, with a teacher in the room.</p>
-          <div class="price"><small>from</small> KSh <span data-price="physical">—</span> <small>per session</small></div>
-          <ul>
-            <li>Small groups and hands-on practice</li>
-            <li>Your one-time code is your ticket</li>
-            <li>Venue and time sent by email</li>
-          </ul>
-          <a class="btn ghost wide" href="#enroll" data-pick="physical">Choose in person</a>
-        </article>
-      </div>
-    </section>
-
     <section id="courses" class="wrap">
       <div class="section-head">
         <span class="kicker">Courses</span>
-        <h2>Courses and prices</h2>
-        <p>Choose a course to open it in the enrolment form.</p>
+        <h2>Choose a course</h2>
+        <p>Every course is available as video lessons, live online classes or in-person sessions.</p>
       </div>
       <div class="courses" id="courseList"><div class="empty">Loading courses…</div></div>
+    </section>
+
+    <section id="how" class="wrap">
+      <div class="section-head">
+        <span class="kicker">How it works</span>
+        <h2>Learn the way that suits you</h2>
+      </div>
+      <ol class="flow">
+        <li><span>1</span>Pick a course and a way to learn</li>
+        <li><span>2</span><em data-pay-blurb>Pay with M-PESA from your phone</em></li>
+        <li><span>3</span>Start once your payment is confirmed</li>
+      </ol>
+      <div class="grid3">
+        <a class="card track" href="#enroll" data-pick="self">
+          <span class="icon-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><polygon points="10 8 15 11 10 14 10 8"/><path d="M8 21h8"/></svg></span>
+          <h3>Video lessons</h3>
+          <p class="muted">Learn at your own pace, any time, on any device.</p>
+          <p class="from">from <strong>KSh <span data-price="self">—</span></strong> per course</p>
+        </a>
+        <a class="card track" href="#enroll" data-pick="live">
+          <span class="icon-badge info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
+          <h3>Live online</h3>
+          <p class="muted">A teacher on a video call, wherever you are.</p>
+          <p class="from">from <strong>KSh <span data-price="live">—</span></strong> per session</p>
+        </a>
+        <a class="card track" href="#enroll" data-pick="physical">
+          <span class="icon-badge warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <h3>In person</h3>
+          <p class="muted">Hands-on classes with a teacher in the room.</p>
+          <p class="from">from <strong>KSh <span data-price="physical">—</span></strong> per session</p>
+        </a>
+      </div>
     </section>
 
     <section id="enroll" class="wrap">
@@ -213,30 +173,6 @@
       </form>
     </section>
 
-    <section id="pay" class="wrap">
-      <div class="section-head">
-        <span class="kicker">Paying</span>
-        <h2>Paying with M-PESA</h2>
-        <p id="payIntro">After you enrol, your dashboard shows the exact amount and your reference.</p>
-      </div>
-      <div class="pay-grid">
-        <div class="panel">
-          <h3>Step by step</h3>
-          <ol class="steps" id="payGuide"></ol>
-        </div>
-        <div class="stack">
-          <div class="notice warn m0">
-            <strong>Stay safe.</strong> Only pay to the number shown on this site and check the name in the M-PESA
-            prompt before entering your PIN. We will never call to ask for your PIN or ask you to "reverse" a payment.
-          </div>
-          <div class="panel">
-            <h3>Need help?</h3>
-            <p class="muted small m0" id="helpLine">Contact us and we'll sort it out.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <section id="faq" class="wrap">
       <div class="section-head">
         <span class="kicker">FAQ</span>
@@ -244,9 +180,19 @@
       </div>
       <div class="faq">
         <details>
-          <summary>How do I get my course after paying?</summary>
-          <p>Self-paced videos appear in your dashboard as soon as your payment is confirmed. For live and in-person
-            classes we email you a one-time code, which is your ticket, and live class links show up in your dashboard.</p>
+          <summary>How do I pay?</summary>
+          <div class="faq-body">
+            <p id="payIntro">After you enrol, your dashboard shows the exact amount and your reference. You pay from your phone with M-PESA:</p>
+            <ol class="steps" id="payGuide"></ol>
+            <p class="notice warn m0"><strong>Stay safe.</strong> Only pay to the number shown on this site and check the name in
+              the M-PESA prompt before entering your PIN. We will never call to ask for your PIN or ask you to "reverse" a payment.</p>
+          </div>
+        </details>
+        <details>
+          <summary>What happens after I pay?</summary>
+          <p>Self-paced videos appear in your dashboard as soon as your payment is confirmed, and play on any phone, tablet or
+            computer. For live and in-person classes we email you a one-time code, which is your ticket, and live class links
+            show up in your dashboard.</p>
         </details>
         <details>
           <summary>How long does it take to confirm my payment?</summary>
@@ -258,25 +204,13 @@
             once its payment has been confirmed, the same as with an email and password.</p>
         </details>
         <details>
-          <summary>Can I watch the videos on my phone?</summary>
-          <p>Yes. Videos play in your browser on a phone, tablet or computer. There is nothing to install.</p>
-        </details>
-        <details>
-          <summary>Can I share my account with a friend?</summary>
+          <summary>Can I share my account?</summary>
           <p>No. Your account can be signed in on up to <span data-devices>2</span> devices at a time, and signing in on another device signs out the oldest one.</p>
         </details>
         <details>
-          <summary>I forgot my password. What do I do?</summary>
-          <p>On the <a href="/login">log-in page</a>, choose "Forgot your password?" and we'll email you a reset link. It works for one hour.</p>
+          <summary>Still have a question?</summary>
+          <p id="helpLine">Contact us and we'll help.</p>
         </details>
-      </div>
-    </section>
-
-    <section class="wrap">
-      <div class="panel cta-band">
-        <h2>Ready to start?</h2>
-        <p>Create a free account, choose a course, and pay with M-PESA.</p>
-        <a class="btn lg" href="#enroll">Enrol now</a>
       </div>
     </section>
   </main>

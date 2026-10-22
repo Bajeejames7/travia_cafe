@@ -18,7 +18,7 @@
       },
       { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
     );
-    document.querySelectorAll('.section-head, main .grid3 .card, .steps-3 .panel, .faq details').forEach((el, i) => {
+    document.querySelectorAll('.section-head, main .grid3 .card, .flow, .faq details').forEach((el, i) => {
       el.style.transitionDelay = `${(i % 3) * 70}ms`;
       el.classList.add('reveal');
       io.observe(el);
