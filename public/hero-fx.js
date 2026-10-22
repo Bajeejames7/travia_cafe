@@ -125,8 +125,28 @@
     })();
   }
 
+  // ---------------------------------------------------------------- glitch
+  /** Every 5–9 seconds the headline shakes briefly (styles.css .glitching); skipped while nobody can see it. */
+  function glitch() {
+    const h1 = band.querySelector('h1');
+    if (!h1) return;
+    (function schedule() {
+      setTimeout(() => {
+        const onScreen = h1.getBoundingClientRect().bottom > 0;
+        if (!document.hidden && onScreen) {
+          h1.classList.add('glitching');
+          setTimeout(() => h1.classList.remove('glitching'), 450);
+        }
+        schedule();
+      }, 5000 + Math.random() * 4000);
+    })();
+  }
+
   function start() {
-    if (!calm) rain();
+    if (!calm) {
+      rain();
+      glitch();
+    }
     // The course list comes from app.js; if it is slow or fails, type the generic version.
     let started = false;
     const go = (c) => {

@@ -265,6 +265,19 @@ textarea { min-height: 110px; resize: vertical; }
 @keyframes blink { 50% { opacity: 0; } }
 .hero-aside .caption { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: .875rem; color: var(--muted); }
 
+/* Home hero headline: a brief "glitch" (shake + red/cyan split) every few seconds and on hover, triggered by
+   hero-fx.js. Short and occasional on purpose, so it reads as a signature touch rather than noise. */
+.hero h1.glitching, .hero h1:hover { animation: glitch .4s steps(2, end) 1; }
+@keyframes glitch {
+  0% { transform: translate(0); text-shadow: -2px 0 rgba(255, 42, 109, .75), 2px 0 rgba(5, 217, 232, .75); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); text-shadow: 2px 0 rgba(255, 42, 109, .75), -2px 0 rgba(5, 217, 232, .75); }
+  60% { transform: translate(-1px, -1px); clip-path: inset(10% 0 52% 0); }
+  70% { clip-path: inset(48% 0 8% 0); }
+  80% { transform: translate(1px, 1px); clip-path: none; }
+  100% { transform: translate(0); text-shadow: none; }
+}
+
 /* Login page: the full logo above the welcome text */
 .auth-logo { display: block; width: 100%; max-width: 340px; height: auto; border-radius: 16px; border: 1px solid var(--line); margin-bottom: 26px; }
 

@@ -13,15 +13,20 @@
   <link rel="stylesheet" href="/styles.css?v=6">
   <script src="/common.js?v=4" defer></script>
   <script src="/fx.js?v=3" defer></script>
-  <script src="/account.js?v=4" defer></script>
+  <script src="/account.js?v=5" defer></script>
 </head>
 <body>
   <header class="topbar">
     <div class="wrap row">
       <a class="brand" href="/"><span class="logo"><img src="/brand/logo-mark-96.png" width="32" height="32" alt=""></span><span>Travia Cafe</span></a>
-      <nav class="nav-links" aria-label="Main"><a href="/#courses">Courses</a><a href="/#faq">FAQ</a></nav>
+      <!-- These switch dashboard tabs; only "Browse courses" leaves for the public catalogue on the home page. -->
+      <nav class="nav-links" aria-label="Dashboard">
+        <a href="#courses" data-goto="courses">My courses</a>
+        <a href="#classes" data-goto="classes">Classes</a>
+        <a href="#payments" data-goto="payments">Payments</a>
+      </nav>
       <div class="nav-actions">
-        <a class="btn small hide-sm" href="/#enroll">Enrol in a course</a>
+        <a class="btn small ghost hide-sm" href="/#courses">Browse courses</a>
         <button class="btn small ghost" id="logoutBtn" type="button">Log out</button>
       </div>
     </div>
