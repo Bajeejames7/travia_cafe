@@ -108,7 +108,8 @@ async function renderPayments() {
         .join('')}
     </div>
     <p class="muted small">Check every M-PESA code against the SMS on the business phone (amount and sender) before confirming.
-      Confirming emails the student their one-time code.</p>
+      Confirming unlocks self-paced videos in the student's account, or emails the class ticket code.
+      Payments made with the M-PESA prompt are confirmed automatically.</p>
     <div class="table-wrap"><table>
       <thead><tr><th>Submitted</th><th>Student</th><th>Choice</th><th class="num">Amount</th><th>M-PESA</th><th>Status</th><th></th></tr></thead>
       <tbody>${
@@ -135,7 +136,7 @@ async function renderPayments() {
   );
   view.querySelectorAll('[data-reissue]').forEach((b) =>
     b.addEventListener('click', () => {
-      if (!confirm('Send a new code? The old code stops working and any device using it loses access.')) return;
+      if (!confirm('Send a new code? The old code stops working. Videos already unlocked in a student account stay unlocked.')) return;
       act(b, async () => {
         const r = await api(`/api/admin/enrollments/${b.dataset.reissue}/reissue`, { method: 'POST' });
         await renderPayments();
@@ -165,6 +166,11 @@ async function renderPayments() {
 }
 
 function codeNotice(title, r) {
+  // Self-paced videos bought from a student account unlock straight away, so there is no code to pass on.
+  if (r.unlocked) {
+    const mail = r.mail === 'sent' ? 'The student was emailed.' : 'The student will see the videos next time they open their dashboard.';
+    return `${title} The videos are unlocked in the student's account. ${mail}`;
+  }
   const mail =
     r.mail === 'sent'
       ? 'Emailed to the student.'
@@ -197,7 +203,7 @@ function paymentRow(r, classes) {
     <td>${esc(r.module_title)}<div class="muted small">${esc(TRACK_LABEL[r.track])}</div>${classCell}</td>
     <td class="num">KSh ${ksh(r.amount)}</td>
     <td class="mono">${esc(r.mpesa_code || '—')}</td>
-    <td>${statusTag(r.status)}${used}${r.reject_reason ? `<div class="muted small">${esc(r.reject_reason)}</div>` : ''}</td>
+    <td>${statusTag(r.status)}${r.via_payhero ? '<div class="muted small">paid by M-PESA prompt</div>' : ''}${used}${r.reject_reason ? `<div class="muted small">${esc(r.reject_reason)}</div>` : ''}</td>
     <td><div class="actions">${actions.join('')}</div></td>
   </tr>`;
 }

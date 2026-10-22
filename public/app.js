@@ -1,22 +1,32 @@
 'use strict';
-/* Public storefront: prices, enrolment (requires a student account), M-PESA guide. */
+/* Public storefront: courses, enrolment (requires a student account), M-PESA guide. */
 
 let catalog = null;
 let me = null; // the logged-in student, or null
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const enrollForm = $('#enrollForm');
+const PRICE_KEY = { self: 'price_self', live: 'price_live', physical: 'price_physical' };
 
-function track() {
-  return enrollForm.track.value;
-}
+const track = () => enrollForm.track.value;
+const selectedModule = () => catalog.modules.find((m) => String(m.id) === enrollForm.module_id.value);
+const priceFor = (mod, t) => (mod ? mod[PRICE_KEY[t]] : null);
+const upcoming = (mod, t) => catalog.classes.filter((c) => c.module_id === mod.id && (!t || c.mode === t));
 
-function selectedModule() {
-  return catalog.modules.find((m) => String(m.id) === enrollForm.module_id.value);
-}
-
-function priceFor(mod, t) {
-  return mod ? mod[{ self: 'price_self', live: 'price_live', physical: 'price_physical' }[t]] : null;
+function courseCard(m) {
+  const lessons = m.video_count ? `<span class="tag ok">${m.video_count} video lesson${m.video_count === 1 ? '' : 's'}</span>` : '';
+  const classes = upcoming(m).length ? `<span class="tag info">${upcoming(m).length} upcoming class${upcoming(m).length === 1 ? '' : 'es'}</span>` : '';
+  return `<article class="card course">
+    <h3>${esc(m.title)}</h3>
+    ${m.description ? `<p class="desc">${esc(m.description)}</p>` : ''}
+    ${lessons || classes ? `<div class="meta">${lessons}${classes}</div>` : ''}
+    <dl class="price-list">
+      <div><dt>Self-paced</dt><dd>KSh ${ksh(m.price_self)}</dd></div>
+      <div><dt>Live online</dt><dd>KSh ${ksh(m.price_live)}</dd></div>
+      <div><dt>In person</dt><dd>KSh ${ksh(m.price_physical)}</dd></div>
+    </dl>
+    <button type="button" class="btn ghost wide" data-course="${m.id}">Enrol in this course</button>
+  </article>`;
 }
 
 function renderCatalog() {
@@ -24,6 +34,7 @@ function renderCatalog() {
   document.title = `${school.name} — Cybersecurity School`;
   document.querySelectorAll('[data-school]').forEach((el) => (el.textContent = school.name));
   if (school.tagline) $('[data-tagline]').textContent = school.tagline;
+  document.querySelectorAll('[data-devices]').forEach((el) => (el.textContent = school.max_devices));
 
   // "From" price on each track card = cheapest active module, or the default.
   for (const t of ['self', 'live', 'physical']) {
@@ -31,36 +42,45 @@ function renderCatalog() {
     $(`[data-price="${t}"]`).textContent = ksh(list.length ? Math.min(...list) : prices[t]);
   }
 
-  $('#moduleRows').innerHTML = modules.length
-    ? modules
-        .map(
-          (m) => `<tr>
-            <td><strong>${esc(m.title)}</strong>${m.description ? `<div class="muted small">${esc(m.description)}</div>` : ''}</td>
-            <td class="num">KSh ${ksh(m.price_self)}</td>
-            <td class="num">KSh ${ksh(m.price_live)}</td>
-            <td class="num">KSh ${ksh(m.price_physical)}</td></tr>`
-        )
-        .join('')
-    : '<tr><td colspan="4" class="muted">Modules will be published soon.</td></tr>';
+  $('#courseList').innerHTML = modules.length ? modules.map(courseCard).join('') : '<div class="empty">New courses are being published. Check back soon.</div>';
+  $('#courseList')
+    .querySelectorAll('[data-course]')
+    .forEach((b) =>
+      b.addEventListener('click', () => {
+        enrollForm.module_id.value = b.dataset.course;
+        updateForm();
+        $('#enroll').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      })
+    );
 
   enrollForm.module_id.innerHTML = modules.length
     ? modules.map((m) => `<option value="${m.id}">${esc(m.title)}</option>`).join('')
-    : '<option value="">No modules yet</option>';
+    : '<option value="">No courses yet</option>';
 
   $('#payGuide').innerHTML = paymentSteps(payment);
+  if (payment.stk) {
+    $('#payIntro').innerHTML = 'The quickest way: in your dashboard, tap <strong>Pay with M-PESA</strong> and enter your PIN on the prompt that appears on your phone. Prefer the M-PESA menu? Follow these steps.';
+    $('[data-pay-blurb]').textContent = 'Approve the M-PESA prompt on your phone. No card or bank account needed.';
+    $('[data-faq-speed]').textContent =
+      'With the M-PESA prompt, your payment is confirmed within seconds. If you pay from the M-PESA menu instead, we check your code and confirm it, usually quickly during working hours.';
+  }
 
-  const contact = [school.contact_phone, school.contact_email].filter(Boolean);
-  $('#contactLine').innerHTML = contact.map(esc).join(' · ');
+  const contact = [];
+  if (school.contact_phone) contact.push(`<a href="tel:${esc(school.contact_phone.replace(/[^\d+]/g, ''))}">${esc(school.contact_phone)}</a>`);
+  const wa = whatsappLink(school.contact_phone);
+  if (wa) contact.push(`<a href="${wa}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`);
+  if (school.contact_email) contact.push(`<a href="mailto:${esc(school.contact_email)}">${esc(school.contact_email)}</a>`);
+  $('#contactLine').innerHTML = contact.join(' · ');
+  if (contact.length) $('#helpLine').innerHTML = `Questions about paying or enrolling? ${contact.join(' · ')}`;
   updateForm();
 }
 
 function renderAuth() {
-  $('#enrollGate').hidden = Boolean(me);
-  enrollForm.phone.closest('.field-row').hidden = !me;
+  $('#phoneStep').hidden = !me;
   if (me) {
     $('#authLink').textContent = 'My dashboard';
     $('#authLink').href = '/account';
-    $('#enrollAs').innerHTML = `Enrolling as <strong>${esc(me.name)}</strong> (${esc(me.email)})`;
+    $('#enrollAs').innerHTML = `Enrolling as <strong>${esc(me.name)}</strong> (${esc(me.email)}).`;
     if (me.phone && !enrollForm.phone.value) enrollForm.phone.value = `0${me.phone.slice(3)}`;
   }
   updateForm();
@@ -82,13 +102,8 @@ function applySavedChoice() {
   updateForm();
   const opt = [...enrollForm.class_id.options].find((o) => o.value === p.get('class') && !o.disabled);
   if (opt) enrollForm.class_id.value = opt.value;
-  syncGateLinks();
+  updateSummary();
   history.replaceState(null, '', '/#enroll');
-}
-
-function syncGateLinks() {
-  $('#gateSignup').href = loginUrl('signup');
-  $('#gateLogin').href = loginUrl('login');
 }
 
 function updateForm() {
@@ -96,9 +111,10 @@ function updateForm() {
   const t = track();
   const mod = selectedModule();
   $('#classField').hidden = t === 'self';
+  $('#phoneNum').textContent = t === 'self' ? '3' : '4';
   if (t !== 'self' && mod) {
     const keep = enrollForm.class_id.value;
-    const options = catalog.classes.filter((c) => c.module_id === mod.id && c.mode === t);
+    const options = upcoming(mod, t);
     enrollForm.class_id.innerHTML =
       options
         .map((c) => {
@@ -111,16 +127,31 @@ function updateForm() {
     const firstOpen = options.find((c) => !c.full);
     enrollForm.class_id.value = kept ? kept.id : firstOpen ? firstOpen.id : '';
   }
-  const price = mod ? ksh(priceFor(mod, t)) : '—';
-  syncGateLinks();
-  enrollForm.querySelector('[type=submit]').innerHTML = me
-    ? `Continue to payment — KSh ${price}`
-    : `Create account to enrol — KSh ${price}`;
+  updateSummary();
+}
+
+function updateSummary() {
+  const t = track();
+  const mod = selectedModule();
+  $('#sumModule').textContent = mod ? mod.title : '—';
+  $('#sumTrack').textContent = TRACK_LABEL[t];
+  const showWhen = t !== 'self';
+  $('#sumWhenLabel').hidden = !showWhen;
+  $('#sumWhen').hidden = !showWhen;
+  if (showWhen) {
+    const cls = mod && catalog.classes.find((c) => String(c.id) === enrollForm.class_id.value);
+    $('#sumWhen').textContent = cls ? fmtWhen(cls.starts_at) : 'Next available';
+  }
+  $('#enrollAmount').textContent = mod ? ksh(priceFor(mod, t)) : '—';
+  enrollForm.querySelector('[type=submit]').textContent = me ? 'Continue to payment' : 'Create free account & continue';
+  if (!me) {
+    $('#enrollAs').innerHTML = `Your free account keeps your videos, class links and receipts in one place. Already have one? <a href="${esc(loginUrl('login'))}">Log in</a>`;
+  }
 }
 
 enrollForm.addEventListener('change', (e) => {
   if (e.target.name === 'track' || e.target.name === 'module_id') updateForm();
-  else if (catalog) syncGateLinks();
+  else if (catalog) updateSummary();
 });
 
 document.querySelectorAll('[data-pick]').forEach((a) =>
@@ -132,6 +163,7 @@ document.querySelectorAll('[data-pick]').forEach((a) =>
 
 enrollForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!catalog || !selectedModule()) return;
   if (!me) return location.assign(loginUrl('signup'));
   const msg = $('#enrollMsg');
   notice(msg);
@@ -158,5 +190,12 @@ api('/api/public/catalog')
     catalog = c;
     renderCatalog();
     applySavedChoice();
+    // The course list just grew the page, which pushes anchors down; jump back to the one in the URL
+    // (e.g. returning to #enroll after creating an account).
+    const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
+    if (target) target.scrollIntoView();
   })
-  .catch(() => notice($('#enrollMsg'), 'err', 'Could not load classes. Please refresh the page.'));
+  .catch(() => {
+    $('#courseList').innerHTML = '<div class="empty">Could not load courses. Please refresh the page.</div>';
+    notice($('#enrollMsg'), 'err', 'Could not load courses. Please refresh the page.');
+  });

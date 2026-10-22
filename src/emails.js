@@ -1,5 +1,6 @@
 'use strict';
 
+const ksh = (n) => Number(n || 0).toLocaleString('en-KE');
 const TRACK_LABEL = { self: 'Self-paced (video)', live: 'Live online class', physical: 'In-person class' };
 
 function formatWhen(startsAt, durationMin) {
@@ -15,20 +16,24 @@ function signoff(s) {
   return `\n\n${s.school_name}${contact ? `\nQuestions? ${contact}` : ''}`;
 }
 
-/** Email sent once an admin confirms an M-PESA payment. Carries the one-time code. */
-function confirmation({ enrollment: e, module: m, cls, code, settings: s, baseUrl }) {
+/**
+ * Email sent once a payment is confirmed. Carries the one-time code, except for self-paced
+ * modules that were unlocked straight into the student's account (`unlocked`), which need no code.
+ */
+function confirmation({ enrollment: e, module: m, cls, code, unlocked = false, settings: s, baseUrl }) {
   const lines = [
     `Hi ${e.name},`,
     '',
-    `We have received your payment of KSh ${e.amount} (M-PESA ${e.mpesa_code || 'n/a'}) for:`,
+    `We have received your payment of KSh ${ksh(e.amount)} (M-PESA ${e.mpesa_code || 'n/a'}) for:`,
     `  ${m.title} — ${TRACK_LABEL[e.track]}`,
     `  Reference: ${e.ref}`,
     '',
-    `Your one-time code: ${code}`,
-    '',
   ];
+  if (!unlocked) lines.push(`Your one-time code: ${code}`, '');
 
-  if (e.track === 'self') {
+  if (unlocked) {
+    lines.push(`Your videos are unlocked. Start watching on your dashboard: ${baseUrl}/account`);
+  } else if (e.track === 'self') {
     lines.push(
       'To start watching:',
       `  1. Log in to your dashboard at ${baseUrl}/account`,
@@ -47,7 +52,8 @@ function confirmation({ enrollment: e, module: m, cls, code, settings: s, baseUr
     }
   }
 
-  return { subject: `Payment confirmed — your ${s.school_name} code`, text: lines.join('\n') + signoff(s) };
+  const subject = unlocked ? `Payment confirmed — ${m.title} is unlocked` : `Payment confirmed — your ${s.school_name} code`;
+  return { subject, text: lines.join('\n') + signoff(s) };
 }
 
 function rejection({ enrollment: e, module: m, reason, settings: s, baseUrl }) {
@@ -87,11 +93,25 @@ function paymentToReview({ enrollment: e, module: m, baseUrl, staffPath }) {
   return {
     subject: `New M-PESA payment to review: ${e.ref}`,
     text: [
-      `${e.name} (${e.email}, ${e.phone}) says they paid KSh ${e.amount}.`,
+      `${e.name} (${e.email}, ${e.phone}) says they paid KSh ${ksh(e.amount)}.`,
       `M-PESA code: ${e.mpesa_code}`,
       `For: ${m.title} — ${TRACK_LABEL[e.track]}`,
       '',
       `Check it against your M-PESA messages, then confirm it at ${baseUrl}${staffPath}`,
+    ].join('\n'),
+  };
+}
+
+/** Tells the school that an M-PESA prompt payment came in and was confirmed automatically. */
+function paymentReceived({ enrollment: e, module: m, receipt }) {
+  return {
+    subject: `M-PESA payment received: ${e.ref}`,
+    text: [
+      `${e.name} (${e.email}, ${e.phone}) paid KSh ${ksh(e.amount)} with the M-PESA prompt.`,
+      `M-PESA receipt: ${receipt || 'n/a'}`,
+      `For: ${m.title} — ${TRACK_LABEL[e.track]}`,
+      '',
+      'PayHero confirmed the payment, so the student already has access. Nothing to do.',
     ].join('\n'),
   };
 }
@@ -109,4 +129,14 @@ function passwordReset({ name, link, settings: s }) {
   return { subject: `Reset your ${s.school_name} password`, text: text + signoff(s) };
 }
 
-module.exports = { passwordReset, TRACK_LABEL, formatWhen, confirmation, rejection, meetingLink, classMessage, paymentToReview };
+module.exports = {
+  passwordReset,
+  TRACK_LABEL,
+  formatWhen,
+  confirmation,
+  rejection,
+  meetingLink,
+  classMessage,
+  paymentToReview,
+  paymentReceived,
+};

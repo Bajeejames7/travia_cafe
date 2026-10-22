@@ -15,6 +15,7 @@ const { db, init, VIDEO_DIR, getSettings, setSettings } = require('./src/db');
 const { ensureAdmin } = require('./src/admin');
 const { sendMail, mailConfigured } = require('./src/mail');
 const emails = require('./src/emails');
+const payhero = require('./src/payhero');
 const {
   sha256,
   randomToken,
@@ -97,8 +98,10 @@ function nowNairobi() {
 }
 const nowIso = () => new Date().toISOString();
 
+/** Site address for links in emails. `req` is optional so background jobs can use it too. */
 function baseUrl(req) {
-  return (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  const fallback = req ? `${req.protocol}://${req.get('host')}` : `http://localhost:${PORT}`;
+  return (process.env.PUBLIC_URL || fallback).replace(/\/+$/, '');
 }
 
 async function newRef() {
@@ -107,6 +110,14 @@ async function newRef() {
     if (!(await db.get('SELECT 1 AS x FROM enrollments WHERE ref = ?', ref))) return ref;
   }
 }
+
+/** How students pay. `stk` means the M-PESA PIN prompt (PayHero) is switched on. */
+const paymentInfo = (s) => ({
+  method: s.mpesa_method,
+  number: s.mpesa_number,
+  account_name: s.mpesa_account_name,
+  stk: payhero.enabled,
+});
 
 const getModule = (id) => (id ? db.get('SELECT * FROM modules WHERE id = ?', id) : undefined);
 const getClass = async (id) => (id ? db.get('SELECT * FROM classes WHERE id = ?', id) : null);
@@ -218,9 +229,15 @@ app.get(
       });
     }
     res.json({
-      school: { name: s.school_name, tagline: s.tagline, contact_phone: s.contact_phone, contact_email: s.contact_email },
+      school: {
+        name: s.school_name,
+        tagline: s.tagline,
+        contact_phone: s.contact_phone,
+        contact_email: s.contact_email,
+        max_devices: MAX_STUDENT_DEVICES,
+      },
       prices: { self: +s.default_price_self, live: +s.default_price_live, physical: +s.default_price_physical },
-      payment: { method: s.mpesa_method, number: s.mpesa_number, account_name: s.mpesa_account_name },
+      payment: paymentInfo(s),
       modules,
       classes,
     });
@@ -555,7 +572,7 @@ app.get(
       enrollments,
       library,
       max_devices: MAX_STUDENT_DEVICES,
-      payment: { method: st.mpesa_method, number: st.mpesa_number, account_name: st.mpesa_account_name },
+      payment: paymentInfo(st),
     });
   })
 );
@@ -631,6 +648,146 @@ app.post(
     res.json({ ok: true, module: (await getModule(e.module_id)).title });
   })
 );
+
+// ------------------------------- M-PESA prompt (PayHero) -------------------
+
+const STK_EXPIRES_MS = 10 * 60 * 1000;
+
+/**
+ * Asks PayHero about a queued prompt and confirms the registration once it is paid. Safe to call from the
+ * callback, the polling browser and the background sweep at the same time: every step is a conditional update.
+ * Without `force`, PayHero is asked at most every few seconds per prompt.
+ */
+async function refreshPrompt(row, { force = false } = {}) {
+  if (row.status !== 'queued') return row.status;
+  const now = Date.now();
+  const claim = await db.run(
+    "UPDATE payhero_requests SET checked_at = ? WHERE id = ? AND status = 'queued' AND checked_at < ?",
+    now,
+    row.id,
+    force ? now + 1 : now - 2500 // the browser polls every 3s, so each poll may ask once
+  );
+  // Not claimed: it was checked a moment ago or is already settled. Report what we know.
+  if (!claim.changes) return (await db.get('SELECT status FROM payhero_requests WHERE id = ?', row.id)).status;
+
+  let st;
+  try {
+    st = await payhero.status(row.reference);
+  } catch (err) {
+    console.error(`[payhero] status check failed for ${row.reference}: ${err.message}`);
+    return 'queued';
+  }
+  if (st.state === 'queued') return 'queued';
+  if (st.state === 'failed') {
+    await db.run("UPDATE payhero_requests SET status = 'failed' WHERE id = ? AND status = 'queued'", row.id);
+    return 'failed';
+  }
+  const won = await db.run("UPDATE payhero_requests SET status = 'success', receipt = ? WHERE id = ? AND status = 'queued'", st.receipt || null, row.id);
+  if (!won.changes) return 'success';
+  const e = await getEnrollment(row.enrollment_id);
+  if (e && e.status !== 'confirmed') {
+    // Receipts are unique. If this one is somehow already on another registration, confirm without it rather than fail.
+    const clash = st.receipt && (await db.get('SELECT 1 AS x FROM enrollments WHERE mpesa_code = ? AND id != ?', st.receipt, e.id));
+    const done = await issueCode(e, { url: baseUrl(), receipt: clash ? null : st.receipt || null, firstTime: true });
+    const s = await getSettings();
+    if (done && s.notify_email) {
+      sendMail({ to: s.notify_email, ...emails.paymentReceived({ enrollment: e, module: await getModule(e.module_id), receipt: st.receipt }) });
+    }
+  }
+  return 'success';
+}
+
+const findMyEnrollment = (req) =>
+  db.get('SELECT * FROM enrollments WHERE ref = ? AND student_id = ?', String(req.params.ref).toUpperCase(), req.student.id);
+
+app.post(
+  '/api/me/enrollments/:ref/stk',
+  rateLimit(12, 15 * 60 * 1000),
+  h(async (req, res) => {
+    if (!payhero.enabled) throw bad('Paying with the M-PESA prompt is not available yet. Follow the M-PESA steps instead.');
+    const e = await findMyEnrollment(req);
+    if (!e) throw new HttpError(404, 'Registration not found.');
+    if (e.status === 'confirmed') throw bad('This payment is already confirmed.');
+    const tel = phone(req.body?.phone || e.phone);
+
+    // PayHero blocks a phone number after repeated cancelled prompts, so impatient taps must not pile up.
+    const last = await db.get('SELECT * FROM payhero_requests WHERE enrollment_id = ? ORDER BY id DESC LIMIT 1', e.id);
+    if (last && last.status === 'queued' && Date.parse(last.created_at) > Date.now() - 30 * 1000) {
+      throw new HttpError(429, 'We just sent a prompt to your phone. Check your phone, or wait 30 seconds and try again.');
+    }
+    const { n: recent } = await db.get(
+      'SELECT COUNT(*) AS n FROM payhero_requests WHERE enrollment_id = ? AND created_at > ?',
+      e.id,
+      new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    );
+    if (recent >= 5) throw new HttpError(429, 'Too many payment prompts. Please wait 15 minutes, or pay with the M-PESA steps instead.');
+
+    let sent;
+    try {
+      sent = await payhero.stkPush({ amount: e.amount, phone: tel, ref: e.ref, name: e.name, callbackUrl: `${baseUrl(req)}/payhero/callback` });
+    } catch (err) {
+      console.error(`[payhero] prompt failed for ${e.ref}: ${err.message}`);
+      throw new HttpError(502, 'Could not reach M-PESA right now. Try again in a minute, or pay with the M-PESA steps instead.');
+    }
+    await db.run(
+      'INSERT INTO payhero_requests (enrollment_id, reference, checkout_id, phone, amount) VALUES (?, ?, ?, ?, ?)',
+      e.id,
+      sent.reference,
+      sent.checkoutId,
+      tel,
+      e.amount
+    );
+    if (tel !== req.student.phone) await db.run('UPDATE students SET phone = ? WHERE id = ?', tel, req.student.id);
+    res.json({ ok: true });
+  })
+);
+
+app.get(
+  '/api/me/enrollments/:ref/stk',
+  h(async (req, res) => {
+    const e = await findMyEnrollment(req);
+    if (!e) throw new HttpError(404, 'Registration not found.');
+    const row = await db.get('SELECT * FROM payhero_requests WHERE enrollment_id = ? ORDER BY id DESC LIMIT 1', e.id);
+    if (!row) return res.json({ status: 'none', enrollment: e.status });
+    let status = await refreshPrompt(row);
+    if (status === 'queued' && Date.parse(row.created_at) < Date.now() - STK_EXPIRES_MS) status = 'expired';
+    res.json({ status, enrollment: (await getEnrollment(e.id)).status });
+  })
+);
+
+/**
+ * PayHero posts here when a prompt is paid, cancelled or times out. The body is not trusted:
+ * it only says which of our own prompts to re-check with PayHero.
+ */
+app.post(
+  '/payhero/callback',
+  h(async (req, res) => {
+    const r = req.body?.response || {};
+    const checkout = String(r.CheckoutRequestID || '');
+    const ref = String(r.ExternalReference || '').toUpperCase();
+    const row =
+      (checkout && (await db.get("SELECT * FROM payhero_requests WHERE checkout_id = ? AND status = 'queued'", checkout))) ||
+      (ref &&
+        (await db.get(
+          `SELECT p.* FROM payhero_requests p JOIN enrollments e ON e.id = p.enrollment_id
+            WHERE e.ref = ? AND p.status = 'queued' ORDER BY p.id DESC LIMIT 1`,
+          ref
+        )));
+    if (row) await refreshPrompt(row, { force: true });
+    res.json({ ok: true });
+  })
+);
+
+/** Catches payments whose callback never arrived (PayHero hiccup, site restarting, callback URL unreachable). */
+async function sweepPrompts() {
+  if (!payhero.enabled) return;
+  const rows = await db.all(
+    "SELECT * FROM payhero_requests WHERE status = 'queued' AND created_at > ? AND checked_at < ?",
+    new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    Date.now() - 60 * 1000
+  );
+  for (const row of rows) await refreshPrompt(row, { force: true });
+}
 
 app.get(
   '/api/me/video/:id',
@@ -901,7 +1058,8 @@ app.get(
     const args = status === 'all' ? [] : [status];
     const rows = (
       await db.all(
-        `SELECT e.*, m.title AS module_title, c.title AS class_title, c.starts_at AS class_starts_at
+        `SELECT e.*, m.title AS module_title, c.title AS class_title, c.starts_at AS class_starts_at,
+                (SELECT COUNT(*) FROM payhero_requests p WHERE p.enrollment_id = e.id AND p.status = 'success') AS via_payhero
            FROM enrollments e JOIN modules m ON m.id = e.module_id LEFT JOIN classes c ON c.id = e.class_id
            ${where} ORDER BY COALESCE(e.paid_at, e.created_at) DESC LIMIT 300`,
         ...args
@@ -914,31 +1072,46 @@ app.get(
   })
 );
 
-/** Issue (or reissue) a one-time code and email it. Reissuing invalidates the previous code. */
-async function issueCode(req, e) {
+/**
+ * Confirms a registration, issues a fresh one-time code and emails it. Reissuing invalidates the previous code.
+ * Self-paced modules bought from a student account are unlocked straight away, so the student has no code to type;
+ * codes remain the ticket for classes and for registrations made before student accounts existed.
+ * With `firstTime`, nothing happens (and null is returned) if the registration is already confirmed, so the PayHero
+ * callback, a polling browser and an admin can all try at once without sending two codes.
+ */
+async function issueCode(e, { url, staffId = null, receipt = null, firstTime = false }) {
   const code = newAccessCode();
-  await db.run(
-    `UPDATE enrollments SET status = 'confirmed', code_hash = ?, code_used_at = NULL, reject_reason = NULL,
-            confirmed_at = COALESCE(confirmed_at, ?), confirmed_by = COALESCE(confirmed_by, ?) WHERE id = ?`,
+  const now = nowIso();
+  const unlock = e.track === 'self' && Boolean(e.student_id);
+  const r = await db.run(
+    `UPDATE enrollments SET status = 'confirmed', code_hash = ?, code_used_at = ?, reject_reason = NULL,
+            mpesa_code = COALESCE(?, mpesa_code), paid_at = COALESCE(?, paid_at),
+            confirmed_at = COALESCE(confirmed_at, ?), confirmed_by = COALESCE(confirmed_by, ?)
+      WHERE id = ?${firstTime ? " AND status != 'confirmed'" : ''}`,
     code.hash,
-    nowIso(),
-    req.staff.id,
+    unlock ? now : null,
+    receipt,
+    receipt ? now : null,
+    now,
+    staffId,
     e.id
   );
+  if (!r.changes) return null;
   const cls = await getClass(e.class_id);
   const msg = emails.confirmation({
-    enrollment: e,
+    enrollment: { ...e, mpesa_code: receipt || e.mpesa_code },
     module: await getModule(e.module_id),
     cls,
     code: code.display,
+    unlocked: unlock,
     settings: await getSettings(),
-    baseUrl: baseUrl(req),
+    baseUrl: url,
   });
   const mailStatus = await sendMail({ to: e.email, ...msg });
   if (e.track === 'live' && cls && cls.meeting_link) {
     await db.run('UPDATE enrollments SET link_sent_at = ? WHERE id = ?', nowIso(), e.id);
   }
-  return { code: code.display, mail: mailStatus };
+  return { code: code.display, mail: mailStatus, unlocked: unlock };
 }
 
 app.post(
@@ -946,8 +1119,9 @@ app.post(
   h(async (req, res) => {
     const e = await getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
-    if (e.status === 'confirmed') throw bad('Already confirmed. Use "New code" to send a fresh code.');
-    res.json(await issueCode(req, e));
+    const r = e.status === 'confirmed' ? null : await issueCode(e, { url: baseUrl(req), staffId: req.staff.id, firstTime: true });
+    if (!r) throw bad('Already confirmed. Use "New code" to send a fresh code.');
+    res.json(r);
   })
 );
 
@@ -957,7 +1131,7 @@ app.post(
     const e = await getEnrollment(optionalId(req.params.id));
     if (!e) throw new HttpError(404, 'Registration not found.');
     if (e.status !== 'confirmed') throw bad('Only confirmed registrations have codes.');
-    res.json(await issueCode(req, e));
+    res.json(await issueCode(e, { url: baseUrl(req), staffId: req.staff.id }));
   })
 );
 
@@ -1337,7 +1511,9 @@ async function start() {
     console.log(`Staff dashboard: http://localhost:${PORT}${STAFF_PATH}`);
     if (!mailConfigured) console.log('SMTP is not configured: emails are logged to the console and the dashboard outbox.');
     if (!modules && process.env.NODE_ENV !== 'production') console.log('No modules yet. Run `npm run seed` to load demo data.');
+    console.log(`M-PESA prompt (PayHero): ${payhero.enabled ? 'on' : 'off. Set PAYHERO_AUTH and PAYHERO_CHANNEL_ID to turn it on'}`);
   });
+  setInterval(() => sweepPrompts().catch((err) => console.error('[payhero] sweep failed:', err.message)), 60 * 1000).unref();
 }
 
 start().catch((err) => {

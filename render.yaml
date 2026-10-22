@@ -4,7 +4,8 @@ services:
   - type: web
     name: travia-cafe
     runtime: node
-    plan: starter            # a persistent disk needs a paid instance
+    region: frankfurt        # closest Render region to Kenya; create the Aiven database in Frankfurt too
+    plan: starter            # paid: needed for the video disk, and free instances cannot send email (SMTP is blocked)
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
@@ -18,7 +19,7 @@ services:
       - key: NODE_VERSION
         value: "22.13.0"
       - key: TRUST_PROXY
-        value: "1"
+        value: "1"           # correct while the Cloudflare DNS record is "DNS only" (grey cloud); see README
       - key: DATA_DIR
         value: /var/data
       - key: STAFF_PATH
@@ -27,21 +28,25 @@ services:
         sync: false
       - key: DATABASE_CA_CERT  # contents of Aiven's ca.pem, so the database certificate is verified
         sync: false
-      - key: PUBLIC_URL      # e.g. https://travia-cafe.onrender.com or your own domain
+      - key: PUBLIC_URL      # https://traviacafe.com once the domain points here (https://travia-cafe.onrender.com until then)
         sync: false
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: SMTP_HOST
+      - key: SMTP_HOST       # Gmail: smtp.gmail.com
         sync: false
       - key: SMTP_PORT
         value: "465"
-      - key: SMTP_USER
+      - key: SMTP_USER       # Gmail: the full Gmail address
         sync: false
-      - key: SMTP_PASS
+      - key: SMTP_PASS       # Gmail: a 16-character App Password, not the account password
         sync: false
-      - key: MAIL_FROM
+      - key: MAIL_FROM       # e.g. Travia Cafe <traviacafe@gmail.com>
+        sync: false
+      - key: PAYHERO_AUTH    # PayHero > API Keys > Basic Authorization token. Empty = M-PESA prompt off
+        sync: false
+      - key: PAYHERO_CHANNEL_ID  # PayHero > Payment Channels > My Payment Channels > channel ID
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false

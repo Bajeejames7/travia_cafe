@@ -5,9 +5,17 @@ const $ = (sel) => document.querySelector(sel);
 const params = new URLSearchParams(location.search);
 const msg = $('#authMsg');
 
-// Only same-site paths are allowed as a destination after logging in.
-const nextRaw = params.get('next') || '/account';
-const next = /^\/(?![/\\])/.test(nextRaw) ? nextRaw : '/account';
+// Only same-site paths are allowed as a destination after logging in. Resolving through URL matters:
+// browsers drop tabs and newlines, so a raw check would let "/\t/evil.example" through as "//evil.example".
+function safeNext(raw) {
+  try {
+    const u = new URL(raw || '/account', location.origin);
+    return u.origin === location.origin ? u.pathname + u.search + u.hash : '/account';
+  } catch {
+    return '/account';
+  }
+}
+const next = safeNext(params.get('next'));
 
 const ERRORS = {
   google_off: 'Google sign-in is not set up yet. Please use your email and password.',
@@ -21,7 +29,25 @@ function setMode(mode) {
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
   $('#loginForm').hidden = mode !== 'login';
   $('#signupForm').hidden = mode !== 'signup';
+  notice(msg);
 }
+
+// Show/hide password, so nobody has to retype a long password they mistyped on a phone.
+document.querySelectorAll('.pw-wrap input').forEach((input) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pw-toggle';
+  btn.textContent = 'Show';
+  btn.setAttribute('aria-label', 'Show password');
+  btn.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.textContent = show ? 'Hide' : 'Show';
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    input.focus();
+  });
+  input.after(btn);
+});
 document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 if (params.get('mode') === 'signup') setMode('signup');
 

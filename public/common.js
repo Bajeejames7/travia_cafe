@@ -33,6 +33,36 @@ function fmtWhen(s) {
   return `${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}, ${time}`;
 }
 
+/** '2026-10-20T18:00' -> { day: '20', month: 'Oct', weekday: 'Tue', time: '18:00' } for date chips. */
+function dateParts(s) {
+  const [date, time] = s.split('T');
+  const d = new Date(`${date}T00:00:00Z`);
+  const part = (o) => d.toLocaleDateString('en-GB', { ...o, timeZone: 'UTC' });
+  return { day: part({ day: 'numeric' }), month: part({ month: 'short' }), weekday: part({ weekday: 'short' }), time };
+}
+
+/** A WhatsApp chat link for a Kenyan number typed any common way, or '' if it does not look like one. */
+function whatsappLink(phone) {
+  const m = /^(?:\+?254|0)?([17]\d{8})$/.exec(String(phone || '').replace(/[^\d+]/g, ''));
+  return m ? `https://wa.me/254${m[1]}` : '';
+}
+
+/** Buttons with data-copy="text" copy that text and say so for a moment. */
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  e.preventDefault();
+  try {
+    await navigator.clipboard.writeText(btn.dataset.copy);
+    btn.classList.add('done');
+    setTimeout(() => btn.classList.remove('done'), 1600);
+  } catch {
+    // Clipboard blocked (old browser or http): the text is on screen to copy by hand.
+  }
+});
+const copyBtn = (value, label = value) =>
+  `<button type="button" class="copy" data-copy="${esc(value)}" aria-label="Copy ${esc(label)}">${esc(label)}</button>`;
+
 function notice(el, kind, html) {
   el.innerHTML = html ? `<div class="notice ${kind}">${html}</div>` : '';
 }
@@ -41,7 +71,7 @@ const TRACK_LABEL = { self: 'Self-paced', live: 'Live online', physical: 'In per
 
 /** Step-by-step M-PESA instructions as <li> HTML. */
 function paymentSteps(payment, { amount, ref } = {}) {
-  const num = payment.number ? `<strong class="mono">${esc(payment.number)}</strong>` : '<em>(number coming soon)</em>';
+  const num = payment.number ? copyBtn(payment.number) : '<em>(number coming soon)</em>';
   const amt = amount ? `<strong>KSh ${ksh(amount)}</strong>` : 'the amount for your module';
   const name = payment.account_name ? ` Check that the name shown is <strong>${esc(payment.account_name)}</strong>.` : '';
   const steps = ['Open the <strong>M-PESA</strong> menu on your phone (or the M-PESA app).'];
@@ -49,7 +79,7 @@ function paymentSteps(payment, { amount, ref } = {}) {
     steps.push(
       'Choose <strong>Lipa na M-PESA</strong> → <strong>Pay Bill</strong>.',
       `Business number: ${num}.`,
-      `Account number: ${ref ? `<strong class="mono">${esc(ref)}</strong> (your reference)` : 'your registration reference (e.g. TC7KQ2MA)'}.`
+      `Account number: ${ref ? `${copyBtn(ref)} (your reference)` : 'your registration reference (e.g. TC7KQ2MA)'}.`
     );
   } else if (payment.method === 'phone') {
     steps.push('Choose <strong>Send Money</strong>.', `Enter phone number ${num}.`);
@@ -59,8 +89,8 @@ function paymentSteps(payment, { amount, ref } = {}) {
   steps.push(
     `Enter ${amt}.`,
     `Enter your M-PESA PIN and confirm.${name}`,
-    'You will get an SMS from M-PESA starting with a 10-character code, e.g. <span class="mono">SJK4H7Q2LM</span>. Enter that code on this page.',
-    'We confirm the payment and email you a <strong>one-time code</strong> — for videos, for your class ticket, and (for live classes) your meeting link.'
+    'M-PESA sends you an SMS that starts with a 10-character code, e.g. <span class="mono">SJK4H7Q2LM</span>. Enter that code in your dashboard.',
+    'We confirm the payment. Videos unlock in your dashboard; class tickets and live class links are emailed to you.'
   );
   return steps.map((s) => `<li>${s}</li>`).join('');
 }

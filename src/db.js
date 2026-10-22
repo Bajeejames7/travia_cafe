@@ -141,6 +141,21 @@ CREATE TABLE IF NOT EXISTS password_resets (
   expires_at ${big} NOT NULL
 );
 
+-- M-PESA prompts sent through PayHero. 'success' is only set after PayHero's status API confirms it.
+CREATE TABLE IF NOT EXISTS payhero_requests (
+  id            ${id},
+  enrollment_id INTEGER NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+  reference     TEXT NOT NULL UNIQUE,     -- PayHero's reference, used for status checks
+  checkout_id   TEXT NOT NULL DEFAULT '',
+  phone         TEXT NOT NULL,
+  amount        INTEGER NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'queued', -- queued | success | failed
+  receipt       TEXT,                     -- M-PESA receipt number once paid
+  checked_at    ${big} NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT ${now}
+);
+CREATE INDEX IF NOT EXISTS payhero_enrollment ON payhero_requests(enrollment_id);
+
 CREATE TABLE IF NOT EXISTS outbox (
   id         ${id},
   to_email   TEXT NOT NULL,
