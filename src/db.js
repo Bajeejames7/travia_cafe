@@ -156,6 +156,17 @@ CREATE TABLE IF NOT EXISTS payhero_requests (
 );
 CREATE INDEX IF NOT EXISTS payhero_enrollment ON payhero_requests(enrollment_id);
 
+-- The pending 6-digit email confirmation code for a student (one at a time). Only a hash is stored.
+CREATE TABLE IF NOT EXISTS email_codes (
+  student_id INTEGER PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
+  code_hash  TEXT NOT NULL,
+  expires_at ${big} NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  sent_at    ${big} NOT NULL,
+  sends      INTEGER NOT NULL DEFAULT 1, -- codes sent in the hour starting at window_at
+  window_at  ${big} NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS outbox (
   id         ${id},
   to_email   TEXT NOT NULL,

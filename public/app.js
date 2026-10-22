@@ -108,9 +108,11 @@ function renderCatalog() {
 function renderAuth() {
   $('#phoneStep').hidden = !me;
   if (me) {
-    $('#authLink').textContent = 'My dashboard';
+    $('#authLink').textContent = 'Dashboard';
     $('#authLink').href = '/account';
-    $('#enrollAs').innerHTML = `Enrolling as <strong>${esc(me.name)}</strong> (${esc(me.email)}).`;
+    $('#enrollAs').innerHTML = me.verified
+      ? `Enrolling as <strong>${esc(me.name)}</strong> (${esc(me.email)}).`
+      : `Confirm your email (<strong>${esc(me.email)}</strong>) to enrol. <a href="${esc(verifyUrl())}">Enter your code</a>`;
     if (me.phone && !enrollForm.phone.value) enrollForm.phone.value = `0${me.phone.slice(3)}`;
   }
   updateForm();
@@ -120,6 +122,12 @@ function renderAuth() {
 function loginUrl(mode) {
   const back = new URLSearchParams({ track: track(), module: enrollForm.module_id.value, class: enrollForm.class_id.value || '' });
   return `/login?${mode === 'signup' ? 'mode=signup&' : ''}next=${encodeURIComponent(`/?${back}#enroll`)}`;
+}
+
+/** The code screen for a signed-in student whose email is not confirmed yet, coming back to this form after. */
+function verifyUrl() {
+  const back = new URLSearchParams({ track: track(), module: enrollForm.module_id.value, class: enrollForm.class_id.value || '' });
+  return `/login?verify=1&next=${encodeURIComponent(`/?${back}#enroll`)}`;
 }
 
 /** Restores choices carried through sign-up (see loginUrl). */
@@ -173,7 +181,11 @@ function updateSummary() {
     $('#sumWhen').textContent = cls ? fmtWhen(cls.starts_at) : 'Next available';
   }
   $('#enrollAmount').textContent = mod ? ksh(priceFor(mod, t)) : '—';
-  enrollForm.querySelector('[type=submit]').textContent = me ? 'Continue to payment' : 'Create free account & continue';
+  enrollForm.querySelector('[type=submit]').textContent = !me
+    ? 'Create free account & continue'
+    : me.verified
+      ? 'Continue to payment'
+      : 'Confirm email & continue';
   if (!me) {
     $('#enrollAs').innerHTML = `Your free account keeps your videos, class links and receipts in one place. Already have one? <a href="${esc(loginUrl('login'))}">Log in</a>`;
   }
@@ -195,6 +207,7 @@ enrollForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!catalog || !selectedModule()) return;
   if (!me) return location.assign(loginUrl('signup'));
+  if (!me.verified) return location.assign(verifyUrl());
   const msg = $('#enrollMsg');
   notice(msg);
   try {
@@ -202,6 +215,7 @@ enrollForm.addEventListener('submit', async (e) => {
     location.assign('/account#payments');
   } catch (err) {
     if (err.status === 401) return location.assign(loginUrl('login'));
+    if (err.data && err.data.code === 'unverified') return location.assign(verifyUrl());
     notice(msg, 'err', esc(err.message));
   }
 });

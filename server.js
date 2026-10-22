@@ -8,6 +8,7 @@ try {
 const express = require('express');
 const multer = require('multer');
 const crypto = require('crypto');
+const dns = require('dns').promises;
 const fs = require('fs');
 const path = require('path');
 
@@ -334,6 +335,81 @@ function safeNext(v) {
 
 app.get('/api/auth/config', (req, res) => res.json({ google: Boolean(GOOGLE) }));
 
+// ------------------------------- Email verification ------------------------
+// Students confirm their email with a 6-digit code before they can enrol, pay or use the dashboard,
+// so codes, tickets and receipts reach them. Google sign-ins are already verified by Google.
+
+const CODE_TTL_MS = 15 * 60 * 1000;
+const RESEND_GAP_MS = 60 * 1000;
+const MAX_SENDS_PER_HOUR = 5;
+const MAX_CODE_ATTEMPTS = 5;
+const unverified = (res) =>
+  res.status(403).json({ error: 'Please confirm your email address first. We sent you a 6-digit code.', code: 'unverified' });
+
+/**
+ * Rejects addresses whose domain cannot receive email (no such domain, or no mail server), which catches most
+ * typos before we send anything. A DNS hiccup does not block sign-up: the emailed code still proves the address.
+ */
+const NO_SUCH_DOMAIN = ['ENOTFOUND', 'ENODATA', 'ENONAME', 'NXDOMAIN'];
+// Used when the server's own DNS cannot answer (misconfigured or down), so the typo check still works.
+const publicDns = new dns.Resolver({ timeout: 3000, tries: 1 });
+publicDns.setServers(['1.1.1.1', '8.8.8.8']);
+
+async function lookupMx(domain) {
+  const withTimeout = (p) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('timeout'), { code: 'ETIMEOUT' })), 5000))]);
+  try {
+    return await withTimeout(dns.resolveMx(domain));
+  } catch (err) {
+    if (NO_SUCH_DOMAIN.includes(err.code)) throw err;
+    return withTimeout(publicDns.resolveMx(domain));
+  }
+}
+
+async function checkMailDomain(address) {
+  const domain = address.split('@')[1];
+  const undeliverable = () => bad(`We can't deliver email to "${domain}". Check your email address for typos.`);
+  let mx;
+  try {
+    mx = await lookupMx(domain);
+  } catch (err) {
+    if (NO_SUCH_DOMAIN.includes(err.code)) throw undeliverable();
+    return;
+  }
+  // A "null MX" (RFC 7505) means the domain explicitly accepts no email.
+  if (!mx.length || mx.every((r) => !r.exchange || r.exchange === '.')) throw undeliverable();
+}
+
+const codeHash = (studentId, code) => sha256(`${studentId}:${code}`);
+
+/**
+ * Emails a fresh 6-digit code, unless a valid one was already sent (`force` sends a new one anyway). Limited to one
+ * email a minute and a few an hour, so nobody can flood an inbox; `newAddress` skips the one-minute wait, because a
+ * student who just fixed a typo needs the code at the new address straight away (the hourly cap still applies).
+ * Returns { status: 'sent' | 'logged' | 'failed' | 'active' | 'wait' | 'limit', wait? }.
+ */
+async function sendVerifyCode(student, { force = false, newAddress = false } = {}) {
+  const now = Date.now();
+  const row = await db.get('SELECT * FROM email_codes WHERE student_id = ?', student.id);
+  if (row && !force && row.expires_at > now && row.attempts < MAX_CODE_ATTEMPTS) return { status: 'active' };
+  if (row && !newAddress && now - row.sent_at < RESEND_GAP_MS) return { status: 'wait', wait: Math.ceil((RESEND_GAP_MS - (now - row.sent_at)) / 1000) };
+  const inWindow = row && now - row.window_at < 3600 * 1000;
+  if (inWindow && row.sends >= MAX_SENDS_PER_HOUR) return { status: 'limit' };
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  await db.run(
+    `INSERT INTO email_codes (student_id, code_hash, expires_at, attempts, sent_at, sends, window_at) VALUES (?, ?, ?, 0, ?, ?, ?)
+     ON CONFLICT (student_id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
+       sent_at = excluded.sent_at, sends = excluded.sends, window_at = excluded.window_at`,
+    student.id,
+    codeHash(student.id, code),
+    now + CODE_TTL_MS,
+    now,
+    inWindow ? row.sends + 1 : 1,
+    inWindow ? row.window_at : now
+  );
+  const status = await sendMail({ to: student.email, ...emails.verifyCode({ name: student.name, code, settings: await getSettings() }) });
+  return { status };
+}
+
 app.post(
   '/api/auth/signup',
   authLimit,
@@ -345,9 +421,11 @@ app.post(
     if (await db.get('SELECT 1 AS x FROM students WHERE email = ?', mail)) {
       throw new HttpError(409, 'An account with that email already exists. Log in instead.');
     }
-    const r = await db.get('INSERT INTO students (name, email, pass_hash) VALUES (?, ?, ?) RETURNING id', name, mail, hashPassword(pw));
+    await checkMailDomain(mail);
+    const r = await db.get('INSERT INTO students (name, email, pass_hash) VALUES (?, ?, ?) RETURNING *', name, mail, hashPassword(pw));
     await startStudentSession(req, res, r.id);
-    res.json({ ok: true });
+    const sent = await sendVerifyCode(r);
+    res.json({ ok: true, verified: false, email: mail, mail: sent.status });
   })
 );
 
@@ -364,7 +442,11 @@ app.post(
     }
     if (!s.active) throw new HttpError(403, 'This account has been disabled. Please contact us.');
     await startStudentSession(req, res, s.id);
-    res.json({ ok: true });
+    if (!s.email_verified) {
+      const sent = await sendVerifyCode(s);
+      return res.json({ ok: true, verified: false, email: s.email, mail: sent.status });
+    }
+    res.json({ ok: true, verified: true });
   })
 );
 
@@ -511,6 +593,7 @@ app.post(
   h(async (req, res) => {
     const b = req.body || {};
     const s = req.student;
+    if (!s.email_verified) return unverified(res);
     const track = String(b.track);
     if (!TRACKS.includes(track)) throw bad('Choose how you want to learn.');
     const tel = phone(b.phone || s.phone);
@@ -551,12 +634,82 @@ app.post(
   })
 );
 
-app.use('/api/me', studentAuth);
+// Until the email is confirmed, the dashboard API only answers who you are and the verification steps.
+const UNVERIFIED_OK = new Set(['GET /', 'POST /verify', 'POST /verify/resend', 'POST /email']);
+app.use('/api/me', studentAuth, (req, res, next) =>
+  req.student.email_verified || UNVERIFIED_OK.has(`${req.method} ${req.path}`) ? next() : unverified(res)
+);
+
+app.post(
+  '/api/me/verify',
+  rateLimit(30, 15 * 60 * 1000),
+  h(async (req, res) => {
+    const s = req.student;
+    if (s.email_verified) return res.json({ ok: true });
+    const row = await db.get('SELECT * FROM email_codes WHERE student_id = ?', s.id);
+    if (!row || row.expires_at < Date.now()) throw bad('This code has expired. Tap "Send a new code".');
+    if (row.attempts >= MAX_CODE_ATTEMPTS) throw bad('Too many wrong tries. Tap "Send a new code".');
+    const code = String(req.body?.code || '').replace(/\D/g, '');
+    const ok = code.length === 6 && crypto.timingSafeEqual(Buffer.from(codeHash(s.id, code)), Buffer.from(row.code_hash));
+    if (!ok) {
+      await db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE student_id = ?', s.id);
+      const left = MAX_CODE_ATTEMPTS - row.attempts - 1;
+      throw bad(left > 0 ? `That code is not right. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Too many wrong tries. Tap "Send a new code".');
+    }
+    await db.tx(async (t) => {
+      await t.run('UPDATE students SET email_verified = 1 WHERE id = ?', s.id);
+      await t.run('DELETE FROM email_codes WHERE student_id = ?', s.id);
+    });
+    await claimEnrollmentsByEmail(s);
+    res.json({ ok: true });
+  })
+);
+
+// Shared by every code email a visitor can ask for after signing up, so one connection cannot use up the
+// daily email allowance (Brevo's free plan sends 300 a day).
+const codeMailLimit = rateLimit(8, 60 * 60 * 1000);
+
+app.post(
+  '/api/me/verify/resend',
+  codeMailLimit,
+  h(async (req, res) => {
+    if (req.student.email_verified) return res.json({ ok: true, verified: true });
+    const r = await sendVerifyCode(req.student, { force: true });
+    if (r.status === 'wait') throw new HttpError(429, `Please wait ${r.wait} seconds before asking for another code.`);
+    if (r.status === 'limit') throw new HttpError(429, 'Too many codes sent. Please wait an hour, or contact us.');
+    res.json({ ok: true, mail: r.status });
+  })
+);
+
+/** Fixes a mistyped address before it is confirmed, and sends a code to the new one. */
+app.post(
+  '/api/me/email',
+  codeMailLimit,
+  h(async (req, res) => {
+    const s = req.student;
+    if (s.email_verified) throw bad('Your email address is already confirmed.');
+    const mail = email(req.body?.email);
+    if (mail !== s.email) {
+      if (await db.get('SELECT 1 AS x FROM students WHERE email = ? AND id != ?', mail, s.id)) {
+        throw new HttpError(409, 'An account with that email already exists. Log in with it instead.');
+      }
+      await checkMailDomain(mail);
+      await db.run('UPDATE students SET email = ? WHERE id = ?', mail, s.id);
+    }
+    const r = await sendVerifyCode({ ...s, email: mail }, { force: true, newAddress: mail !== s.email });
+    if (r.status === 'wait') throw new HttpError(429, `Please wait ${r.wait} seconds, then tap "Send a new code".`);
+    if (r.status === 'limit') throw new HttpError(429, 'Too many codes sent. Please wait an hour, or contact us.');
+    res.json({ ok: true, email: mail, mail: r.status });
+  })
+);
 
 app.get(
   '/api/me',
   h(async (req, res) => {
     const s = req.student;
+    if (!s.email_verified) {
+      return res.json({ student: { name: s.name, email: s.email, phone: s.phone, verified: false }, verified: false });
+    }
     const enrollments = (
       await db.all(
         `SELECT e.ref, e.track, e.amount, e.status, e.mpesa_code, e.reject_reason, e.code_used_at, e.created_at,
@@ -582,7 +735,8 @@ app.get(
     }
     const st = await getSettings();
     res.json({
-      student: { name: s.name, email: s.email, phone: s.phone, google: Boolean(s.google_sub), has_password: Boolean(s.pass_hash) },
+      student: { name: s.name, email: s.email, phone: s.phone, google: Boolean(s.google_sub), has_password: Boolean(s.pass_hash), verified: true },
+      verified: true,
       enrollments,
       library,
       max_devices: MAX_STUDENT_DEVICES,
@@ -1456,7 +1610,7 @@ app.get(
   h(async (req, res) => {
     res.json(
       await db.all(
-        `SELECT s.id, s.name, s.email, s.phone, s.active, s.created_at, s.last_login_at,
+        `SELECT s.id, s.name, s.email, s.phone, s.active, s.email_verified, s.created_at, s.last_login_at,
                 CASE WHEN s.google_sub IS NULL THEN 0 ELSE 1 END AS google,
                 CASE WHEN s.pass_hash IS NULL THEN 0 ELSE 1 END AS has_password,
                 (SELECT COUNT(*) FROM enrollments e WHERE e.student_id = s.id) AS registrations,
@@ -1474,11 +1628,20 @@ app.put(
   h(async (req, res) => {
     const s = await db.get('SELECT * FROM students WHERE id = ?', optionalId(req.params.id));
     if (!s) throw new HttpError(404, 'Student not found.');
-    const active = req.body?.active ? 1 : 0;
+    const b = req.body || {};
     await db.tx(async (t) => {
-      await t.run('UPDATE students SET active = ? WHERE id = ?', active, s.id);
-      if (!active) await t.run('DELETE FROM student_sessions WHERE student_id = ?', s.id);
+      if (b.active !== undefined) {
+        const active = b.active ? 1 : 0;
+        await t.run('UPDATE students SET active = ? WHERE id = ?', active, s.id);
+        if (!active) await t.run('DELETE FROM student_sessions WHERE student_id = ?', s.id);
+      }
+      // Staff can confirm an email by hand, e.g. after checking it with the student by phone.
+      if (b.verified) {
+        await t.run('UPDATE students SET email_verified = 1 WHERE id = ?', s.id);
+        await t.run('DELETE FROM email_codes WHERE student_id = ?', s.id);
+      }
     });
+    if (b.verified) await claimEnrollmentsByEmail(s);
     res.json({ ok: true });
   })
 );

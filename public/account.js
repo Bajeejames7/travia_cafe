@@ -377,6 +377,8 @@ async function load() {
     if (err.status === 401) return location.replace('/login?next=/account');
     throw err;
   }
+  // The email must be confirmed before the dashboard opens; the log-in page asks for the code.
+  if (!data.verified) return location.replace(`/login?verify=1&next=${encodeURIComponent(`/account${location.hash}`)}`);
   $('#hello').textContent = `Hi, ${data.student.name.split(' ')[0]}`;
   renderSummary();
   renderCourses();

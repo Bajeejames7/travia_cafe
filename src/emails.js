@@ -116,6 +116,22 @@ function paymentReceived({ enrollment: e, module: m, receipt }) {
   };
 }
 
+/** The 6-digit code a student types to confirm their email address. The code leads the subject so it shows in notifications. */
+function verifyCode({ name, code, settings: s }) {
+  const text = [
+    `Hi ${name},`,
+    '',
+    `Your ${s.school_name} verification code is:`,
+    '',
+    `    ${code}`,
+    '',
+    'Enter it on the website to confirm your email address. It expires in 15 minutes.',
+    '',
+    'If you did not create an account, you can ignore this email.',
+  ].join('\n');
+  return { subject: `${code} is your ${s.school_name} verification code`, text: text + signoff(s) };
+}
+
 function passwordReset({ name, link, settings: s }) {
   const text = [
     `Hi ${name},`,
@@ -130,6 +146,7 @@ function passwordReset({ name, link, settings: s }) {
 }
 
 module.exports = {
+  verifyCode,
   passwordReset,
   TRACK_LABEL,
   formatWhen,

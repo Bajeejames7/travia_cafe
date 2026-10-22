@@ -6,11 +6,12 @@
   <title>Log in — Travia Cafe</title>
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#0b1016">
+  <script src="/theme.js?v=1"></script>
   <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=4">
-  <script src="/common.js?v=3" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=5">
+  <script src="/common.js?v=4" defer></script>
   <script src="/fx.js?v=3" defer></script>
-  <script src="/login.js?v=3" defer></script>
+  <script src="/login.js?v=4" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -61,6 +62,7 @@
           <form id="signupForm" novalidate hidden>
             <label>Full name <input name="name" autocomplete="name" maxlength="100" required></label>
             <label>Email <input name="email" type="email" inputmode="email" autocomplete="email" required></label>
+            <p class="suggest" id="signupSuggest" hidden></p>
             <label class="pw-wrap">Password (8+ characters) <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
             <button class="btn wide lg" type="submit">Create free account</button>
             <p class="muted small m-top">Your codes, class links and receipts are sent to this email. By creating an account you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
@@ -80,6 +82,33 @@
           <label class="pw-wrap">New password (8+ characters) <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
           <button class="btn wide lg" type="submit">Save and log in</button>
         </form>
+
+        <section id="verifyView" hidden>
+          <div class="verify-head">
+            <span class="icon-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+            <div>
+              <h2>Check your email</h2>
+              <p class="muted small m0">We sent a 6-digit code to <strong id="verifyEmail"></strong>. It expires in 15 minutes.
+                Not in your inbox? Check Spam or Promotions.</p>
+            </div>
+          </div>
+          <form id="verifyForm" novalidate>
+            <label>Verification code
+              <input name="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required></label>
+            <button class="btn wide lg" type="submit">Confirm email</button>
+          </form>
+          <div class="row between small m-top">
+            <button type="button" class="linkbtn" id="resendBtn">Send a new code</button>
+            <button type="button" class="linkbtn" id="changeEmailBtn">Wrong email?</button>
+          </div>
+          <form id="changeEmailForm" class="m-top" novalidate hidden>
+            <label>Correct email address <input name="email" type="email" inputmode="email" autocomplete="email" required></label>
+            <p class="suggest" id="changeSuggest" hidden></p>
+            <button class="btn ghost wide" type="submit">Send the code to this address</button>
+          </form>
+          <p class="muted small m-top m0">You need to confirm your email before you can enrol or pay, so your codes, tickets and receipts reach you.</p>
+          <p class="small center m-top"><button type="button" class="linkbtn" id="verifyLogout">Log out</button></p>
+        </section>
       </div>
     </div>
   </main>

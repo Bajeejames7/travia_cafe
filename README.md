@@ -46,7 +46,10 @@ in `.env`, the seed makes one up and prints it. Use separate browser windows (or
 
 **As a new visitor**
 1. Open `http://localhost:3000`, pick *Live online*, a module and a class date, and click **Create account to enrol**.
-2. Sign up with any made-up email. You come back to the form with your choices kept; click **Continue to payment**.
+2. Sign up with an email on a real domain (for example `yourname+test@gmail.com`; the site checks the domain can
+   receive mail). Without email set up, the 6-digit code is printed in the terminal running `npm start` and listed in
+   the staff dashboard's **Emails** tab; type it in. You come back to the form with your choices kept; click
+   **Continue to payment**.
 3. On your dashboard's **Payments** tab, enter any 10-character M-PESA code (e.g. `ABC1234567`).
 
 **As the admin**
@@ -97,6 +100,22 @@ Students create an account (email + password, or **Continue with Google**) befor
 - **Classes**: booked live and in-person classes, with a **Join class** button once paid and the teacher has added a link.
 - **Payments**: every registration, its status, M-PESA instructions and a box to submit the M-PESA code.
 - **Profile**: name, phone, password (Google users can add one).
+
+**Email confirmation.** Before an email-and-password account can enrol, pay or open the dashboard, the student
+confirms their address with a 6-digit code:
+
+- At sign-up the site first checks that the email's domain can receive mail at all, and the form suggests fixes for
+  common typos (`gmial.com` → `gmail.com`). Then it emails the code.
+- The code expires after 15 minutes and allows 5 tries. "Send a new code" works once a minute, up to 5 times an hour.
+  "Wrong email?" lets the student fix the address and sends the code there.
+- Google sign-ins are already confirmed by Google. Using "Forgot your password?" also confirms the address.
+- In the staff dashboard, **Students** shows who has confirmed, and **Mark email confirmed** lets an admin confirm
+  someone by hand (for example after checking the address with them by phone). Codes also appear in **Emails**, so
+  you can read one out if a student's email is slow.
+- Demo students from `npm run seed` are already confirmed.
+
+**Light and dark theme.** The sun/moon button in the top bar switches between a dark and a light theme. Each visitor's
+choice is remembered; until they choose, their device setting decides.
 
 An account can be signed in on at most `MAX_STUDENT_DEVICES` devices at once (default 2). Signing in on another
 device signs out the oldest, which makes sharing one account with friends impractical. Forgotten passwords are reset

@@ -122,7 +122,8 @@ async function main() {
   });
 
   const student = async (name, mail, phone, pw) =>
-    (await db.get('INSERT INTO students (name, email, phone, pass_hash) VALUES (?, ?, ?, ?) RETURNING id', name, mail, phone, hashPassword(pw))).id;
+    // Demo students count as verified, so the demo works without email set up.
+    (await db.get('INSERT INTO students (name, email, phone, pass_hash, email_verified) VALUES (?, ?, ?, ?, 1) RETURNING id', name, mail, phone, hashPassword(pw))).id;
   const studentEmail = (process.env.DEMO_STUDENT_EMAIL || 'amina@student.test').toLowerCase();
   const studentPw = password('DEMO_STUDENT_PASSWORD');
   const amina = await student('Amina Wanjiku', studentEmail, '254712345678', studentPw);

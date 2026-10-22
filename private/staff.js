@@ -214,7 +214,8 @@ function paymentRow(r, classes) {
 async function renderStudents() {
   const rows = await api('/api/admin/students');
   view.innerHTML = `
-    <p class="muted small">${rows.length} student account(s). Disabling an account signs it out everywhere and blocks logging in.</p>
+    <p class="muted small">${rows.length} student account(s). Students must confirm their email with a code before they can enrol or pay.
+      Disabling an account signs it out everywhere and blocks logging in.</p>
     <div class="table-wrap"><table>
       <thead><tr><th>Student</th><th>Sign-in</th><th class="num">Registrations</th><th>Last login</th><th>Status</th><th></th></tr></thead>
       <tbody>${
@@ -226,8 +227,10 @@ async function renderStudents() {
           <td class="small">${[r.google ? 'Google' : '', r.has_password ? 'Password' : ''].filter(Boolean).join(' + ')}<div class="muted">${r.devices} device(s) signed in</div></td>
           <td class="num">${r.paid} paid / ${r.registrations}</td>
           <td class="small">${esc(fmtStamp(r.last_login_at)) || '—'}<div class="muted">joined ${esc(fmtStamp(r.created_at))}</div></td>
-          <td>${r.active ? '<span class="tag ok">active</span>' : '<span class="tag bad">disabled</span>'}</td>
+          <td>${r.active ? '<span class="tag ok">active</span>' : '<span class="tag bad">disabled</span>'}
+            <div class="m-top">${r.email_verified ? '<span class="tag ok">email confirmed</span>' : '<span class="tag warn">email not confirmed</span>'}</div></td>
           <td><div class="actions">
+            ${r.email_verified ? '' : '<button class="btn small ghost" data-verify>Mark email confirmed</button>'}
             <button class="btn small ghost" data-signout>Sign out devices</button>
             <button class="btn small ${r.active ? 'danger' : ''}" data-toggle="${r.active ? 0 : 1}">${r.active ? 'Disable' : 'Enable'}</button>
           </div></td>
@@ -246,6 +249,14 @@ async function renderStudents() {
         flash('ok', `Signed out ${r.signed_out} device(s).`);
       })
     );
+    tr.querySelector('[data-verify]')?.addEventListener('click', (e) => {
+      if (!confirm('Mark this email as confirmed? Only do this if you have checked with the student that the address is right.')) return;
+      act(e.target, async () => {
+        await api(`/api/admin/students/${id}`, { method: 'PUT', body: { verified: true } });
+        await renderStudents();
+        flash('ok', 'Email marked as confirmed. The student can now enrol and pay.');
+      });
+    });
     tr.querySelector('[data-toggle]').addEventListener('click', (e) => {
       const active = e.target.dataset.toggle === '1';
       if (!active && !confirm('Disable this student? They will be signed out and cannot log in until you enable them again.')) return;
