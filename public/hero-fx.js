@@ -126,19 +126,32 @@
   }
 
   // ---------------------------------------------------------------- glitch
-  /** Every 9–15 seconds the headline shakes briefly (styles.css .glitching); skipped while nobody can see it. */
+  /**
+   * Shaky and glitchy all the time (styles.css .glitchy): a constant jitter plus two torn red/cyan copies of the
+   * text, and every 2–5 seconds a stronger burst (.glitching). The copies are aria-hidden, so a screen reader reads
+   * the headline once. Bursts are skipped while nobody can see the headline.
+   */
   function glitch() {
     const h1 = band.querySelector('h1');
     if (!h1) return;
+    const text = h1.textContent;
+    for (const tone of ['red', 'cyan']) {
+      const copy = document.createElement('span');
+      copy.className = `g g-${tone}`;
+      copy.setAttribute('aria-hidden', 'true');
+      copy.textContent = text;
+      h1.append(copy);
+    }
+    h1.classList.add('glitchy');
     (function schedule() {
       setTimeout(() => {
         const onScreen = h1.getBoundingClientRect().bottom > 0;
         if (!document.hidden && onScreen) {
           h1.classList.add('glitching');
-          setTimeout(() => h1.classList.remove('glitching'), 450);
+          setTimeout(() => h1.classList.remove('glitching'), 500);
         }
         schedule();
-      }, 9000 + Math.random() * 6000);
+      }, 2000 + Math.random() * 3000);
     })();
   }
 

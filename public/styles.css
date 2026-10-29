@@ -265,16 +265,59 @@ textarea { min-height: 110px; resize: vertical; }
 @keyframes blink { 50% { opacity: 0; } }
 .hero-aside .caption { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: .875rem; color: var(--muted); }
 
-/* Home hero headline: a brief "glitch" (shake + red/cyan split) every few seconds and on hover, triggered by
-   hero-fx.js. Short and occasional on purpose, so it reads as a signature touch rather than noise. */
-.hero h1.glitching, .hero h1:hover { animation: glitch .4s steps(2, end) 1; }
+/* Home hero headline: shaky and glitchy all the time, like a feed that is being tampered with.
+   Three layers, all from hero-fx.js: a constant small jitter on the headline itself; two copies of the text
+   (.g-red, .g-cyan, aria-hidden) that flicker through offset horizontal slices; and every few seconds a
+   stronger burst (.glitching). It still reads: the real text never moves more than 2px, and the torn copies
+   only show slices for a fraction of each cycle. All of it is off under prefers-reduced-motion (below). */
+.hero h1.glitchy { position: relative; animation: jitter 2.2s steps(1, end) infinite; }
+.hero h1 .g { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+.hero h1 .g-red { color: #ff2a6d; animation: tear-a 2.8s steps(1, end) infinite; mix-blend-mode: screen; }
+.hero h1 .g-cyan { color: #05d9e8; animation: tear-b 3.4s steps(1, end) infinite; mix-blend-mode: screen; }
+.hero h1.glitching, .hero h1:hover { animation: glitch .45s steps(2, end) 1; }
+.hero h1.glitching .g, .hero h1:hover .g { animation-duration: .45s; }
+
+@keyframes jitter {
+  0%, 100% { transform: translate(0); }
+  8% { transform: translate(-1px, 0); }
+  9% { transform: translate(1px, -1px); }
+  10% { transform: translate(0); }
+  37% { transform: translate(2px, 0) skewX(-2deg); }
+  38% { transform: translate(-1px, 1px); }
+  39% { transform: translate(0); }
+  64% { transform: translate(-2px, 1px); }
+  65% { transform: translate(1px, 0) skewX(1deg); }
+  66% { transform: translate(0); }
+  88% { transform: translate(1px, 1px); }
+  89% { transform: translate(0); }
+}
+@keyframes tear-a {
+  0%, 100% { clip-path: inset(100% 0 0 0); transform: translate(0); }
+  10% { clip-path: inset(12% 0 70% 0); transform: translate(-4px, 0); }
+  13% { clip-path: inset(100% 0 0 0); }
+  41% { clip-path: inset(55% 0 28% 0); transform: translate(5px, 0); }
+  44% { clip-path: inset(30% 0 52% 0); transform: translate(-3px, 0); }
+  47% { clip-path: inset(100% 0 0 0); }
+  76% { clip-path: inset(72% 0 6% 0); transform: translate(3px, 0); }
+  79% { clip-path: inset(100% 0 0 0); }
+}
+@keyframes tear-b {
+  0%, 100% { clip-path: inset(100% 0 0 0); transform: translate(0); }
+  18% { clip-path: inset(40% 0 40% 0); transform: translate(4px, 0); }
+  21% { clip-path: inset(100% 0 0 0); }
+  52% { clip-path: inset(5% 0 80% 0); transform: translate(-5px, 0); }
+  55% { clip-path: inset(62% 0 18% 0); transform: translate(3px, 0); }
+  58% { clip-path: inset(100% 0 0 0); }
+  86% { clip-path: inset(25% 0 60% 0); transform: translate(-4px, 0); }
+  89% { clip-path: inset(100% 0 0 0); }
+}
 @keyframes glitch {
-  0% { transform: translate(0); text-shadow: -2px 0 rgba(255, 42, 109, .75), 2px 0 rgba(5, 217, 232, .75); }
-  20% { transform: translate(-2px, 1px); }
-  40% { transform: translate(2px, -1px); text-shadow: 2px 0 rgba(255, 42, 109, .75), -2px 0 rgba(5, 217, 232, .75); }
-  60% { transform: translate(-1px, -1px); clip-path: inset(10% 0 52% 0); }
+  0% { transform: translate(0); text-shadow: -3px 0 rgba(255, 42, 109, .8), 3px 0 rgba(5, 217, 232, .8); }
+  20% { transform: translate(-3px, 1px) skewX(-4deg); }
+  40% { transform: translate(3px, -1px); text-shadow: 3px 0 rgba(255, 42, 109, .8), -3px 0 rgba(5, 217, 232, .8); }
+  60% { transform: translate(-2px, -1px); clip-path: inset(10% 0 52% 0); }
   70% { clip-path: inset(48% 0 8% 0); }
-  80% { transform: translate(1px, 1px); clip-path: none; }
+  80% { transform: translate(2px, 1px) skewX(3deg); clip-path: none; }
   100% { transform: translate(0); text-shadow: none; }
 }
 
